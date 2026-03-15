@@ -1,0 +1,17 @@
+{
+  "name": "wazuh-web-manager",
+  "version": "0.1.0",
+  "description": "Web GUI for managing Wazuh rules, agents, and configuration in Docker",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "dockerode": "^4.0.2",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "tar-stream": "^3.1.7"
+  }
+}
