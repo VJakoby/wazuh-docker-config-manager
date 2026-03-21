@@ -3,8 +3,7 @@
 const axios = require('axios');
 const https = require('https');
 
-// Wazuh uses a self-signed cert by default in Docker — disable verification
-// for local use. In production you'd swap this for a proper cert.
+// Wazuh uses a self-signed cert by default in Docker
 const client = axios.create({
   httpsAgent: new https.Agent({ rejectUnauthorized: false }),
   timeout: 10_000,
@@ -17,29 +16,77 @@ function baseURL() {
   return (process.env.WAZUH_API_URL || 'https://localhost:55000').replace(/\/$/, '');
 }
 
+function log(level, msg, extra = {}) {
+  const ts = new Date().toISOString();
+  const extraStr = Object.keys(extra).length ? ' ' + JSON.stringify(extra) : '';
+  console[level === 'error' ? 'error' : 'log'](`[wazuh-api] [${ts}] ${msg}${extraStr}`);
+}
+
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
 
 async function getToken() {
-  if (_token && Date.now() < _tokenExpiry) return _token;
+  if (_token && Date.now() < _tokenExpiry) {
+    log('info', 'Using cached token');
+    return _token;
+  }
 
   const user = process.env.WAZUH_API_USER || 'wazuh';
   const pass = process.env.WAZUH_API_PASS || 'wazuh';
+  const url  = `${baseURL()}/security/user/authenticate`;
 
-  const res = await client.get(`${baseURL()}/security/user/authenticate`, {
-    auth: { username: user, password: pass },
-  });
+  log('info', `Authenticating with Wazuh API`, { url, user });
+
+  let res;
+  try {
+    res = await client.get(url, {
+      auth: { username: user, password: pass },
+    });
+  } catch (err) {
+    const status  = err.response?.status;
+    const body    = err.response?.data;
+    const detail  = body?.detail || body?.message || err.message;
+
+    log('error', `Auth request failed`, { status, detail, url, user });
+
+    if (status === 401) {
+      throw new Error(
+        `Wazuh API auth failed (401) — wrong username or password.\n` +
+        `  URL:  ${url}\n` +
+        `  User: ${user}\n` +
+        `  Tip:  Check WAZUH_API_USER and WAZUH_API_PASS in your .env\n` +
+        `  Wazuh response: ${JSON.stringify(body)}`
+      );
+    }
+    if (status === 404) {
+      throw new Error(
+        `Wazuh API auth endpoint not found (404).\n` +
+        `  URL: ${url}\n` +
+        `  Tip: Check WAZUH_API_URL in your .env — is the port correct?`
+      );
+    }
+    throw new Error(`Wazuh API auth error: ${detail} (status ${status ?? 'no response'})`);
+  }
 
   _token = res.data?.data?.token;
-  if (!_token) throw new Error('Wazuh API authentication failed — check WAZUH_API_USER / WAZUH_API_PASS');
 
-  // Tokens are valid for 900s by default; refresh at 800s
+  if (!_token) {
+    log('error', 'Auth response did not contain a token', { body: res.data });
+    throw new Error(
+      `Wazuh API returned 200 but no token in response.\n` +
+      `  Response body: ${JSON.stringify(res.data)}`
+    );
+  }
+
+  // Tokens valid 900s by default; refresh at 800s
   _tokenExpiry = Date.now() + 800_000;
+  log('info', `Auth successful, token cached for ~800s`, { user });
   return _token;
 }
 
 function invalidateToken() {
+  log('info', 'Invalidating cached token');
   _token = null;
   _tokenExpiry = 0;
 }
@@ -50,26 +97,68 @@ async function authHeaders() {
 }
 
 // ---------------------------------------------------------------------------
-// Generic request helper with auto-retry on 401
+// Generic request helper
 // ---------------------------------------------------------------------------
 
 async function request(method, path, data = null, params = {}) {
   const url = `${baseURL()}${path}`;
-  const headers = await authHeaders();
+  log('info', `→ ${method.toUpperCase()} ${url}`, Object.keys(params).length ? { params } : {});
+
+  let headers;
+  try {
+    headers = await authHeaders();
+  } catch (authErr) {
+    // Auth itself failed — surface clearly
+    throw authErr;
+  }
+
+  const doRequest = async (hdrs) => {
+    return client.request({ method, url, headers: hdrs, data, params });
+  };
 
   try {
-    const res = await client.request({ method, url, headers, data, params });
+    const res = await doRequest(headers);
+    log('info', `← ${res.status} ${method.toUpperCase()} ${path}`);
     return res.data?.data ?? res.data;
+
   } catch (err) {
-    if (err.response?.status === 401) {
-      // Token expired — refresh and retry once
+    const status = err.response?.status;
+    const body   = err.response?.data;
+    const detail = body?.detail || body?.message || body?.error || err.message;
+
+    log('error', `← ${status ?? 'ERR'} ${method.toUpperCase()} ${path}`, { detail, body });
+
+    if (status === 401) {
+      log('info', 'Got 401 — token may have expired, refreshing and retrying once');
       invalidateToken();
-      const retryHeaders = await authHeaders();
-      const res = await client.request({ method, url, headers: retryHeaders, data, params });
-      return res.data?.data ?? res.data;
+      try {
+        const retryHeaders = await authHeaders();
+        const res = await doRequest(retryHeaders);
+        log('info', `← ${res.status} ${method.toUpperCase()} ${path} (retry)`);
+        return res.data?.data ?? res.data;
+      } catch (retryErr) {
+        const retryStatus = retryErr.response?.status;
+        const retryDetail = retryErr.response?.data?.detail || retryErr.message;
+        throw new Error(
+          `Wazuh API 401 on ${method.toUpperCase()} ${path} even after token refresh.\n` +
+          `  Status: ${retryStatus}\n` +
+          `  Detail: ${retryDetail}\n` +
+          `  Tip: Your user may not have permission for this endpoint. ` +
+          `Check the user's role in Wazuh (Administrator role required for most operations).`
+        );
+      }
     }
-    const msg = err.response?.data?.detail || err.response?.data?.message || err.message;
-    throw new Error(`Wazuh API ${method.toUpperCase()} ${path}: ${msg}`);
+
+    if (status === 403) {
+      throw new Error(
+        `Wazuh API 403 Forbidden on ${method.toUpperCase()} ${path}.\n` +
+        `  Detail: ${detail}\n` +
+        `  Tip: The user "${process.env.WAZUH_API_USER || 'wazuh'}" does not have permission ` +
+        `for this endpoint. Assign the Administrator role in Wazuh.`
+      );
+    }
+
+    throw new Error(`Wazuh API ${method.toUpperCase()} ${path}: ${detail} (status ${status ?? 'no response'})`);
   }
 }
 
@@ -77,31 +166,20 @@ async function request(method, path, data = null, params = {}) {
 // Agents
 // ---------------------------------------------------------------------------
 
-/**
- * List all agents.
- * Returns array of agent objects.
- */
 async function listAgents(params = {}) {
-  const defaults = { limit: 500, offset: 0, select: 'id,name,ip,os,status,lastKeepAlive,version,group' };
+  const defaults = { limit: 500, offset: 0, select: 'id,name,ip,os.name,os.version,os.platform,status,lastKeepAlive,version,group' };
   const data = await request('GET', '/agents', null, { ...defaults, ...params });
   return data?.affected_items ?? [];
 }
 
-/**
- * Get a single agent by ID.
- */
 async function getAgent(agentId) {
-  const data = await request('GET', `/agents`, null, {
+  const data = await request('GET', '/agents', null, {
     agents_list: agentId,
     select: 'id,name,ip,os,status,lastKeepAlive,version,group,dateAdd,manager,node_name',
   });
   return data?.affected_items?.[0] ?? null;
 }
 
-/**
- * Delete (remove) one or more agents.
- * agentIds: comma-separated string or array
- */
 async function deleteAgents(agentIds) {
   const ids = Array.isArray(agentIds) ? agentIds.join(',') : agentIds;
   return request('DELETE', '/agents', null, {
@@ -111,26 +189,18 @@ async function deleteAgents(agentIds) {
   });
 }
 
-/**
- * Get the registration key / enrollment command for a new agent.
- * Returns an object with the authd key and OS-specific install commands.
- */
 async function getEnrollmentInfo(agentName, agentIP = 'any', groupName = 'default') {
-  // Create a new agent entry to get the key
-  const created = await request('POST', '/agents', {
-    name: agentName,
-    ip: agentIP,
-  });
-
+  const created = await request('POST', '/agents', { name: agentName, ip: agentIP });
   const agentId = created?.id;
-  if (!agentId) throw new Error('Failed to create agent entry');
+  if (!agentId) throw new Error('Failed to create agent entry — no ID returned');
 
   const keyData = await request('GET', `/agents/${agentId}/key`);
   const key = keyData?.affected_items?.[0]?.key ?? '';
 
-  // Optionally assign to a group
   if (groupName && groupName !== 'default') {
-    await assignAgentGroup(agentId, groupName).catch(() => {});
+    await assignAgentGroup(agentId, groupName).catch(err => {
+      log('error', `Could not assign agent to group "${groupName}"`, { err: err.message });
+    });
   }
 
   const managerIP = new URL(baseURL()).hostname;
@@ -206,6 +276,64 @@ async function getManagerStatus() {
   return request('GET', '/manager/status');
 }
 
+// ---------------------------------------------------------------------------
+// Group config (agent.conf)
+// ---------------------------------------------------------------------------
+
+async function getGroupConfig(groupName) {
+  // The API returns the XML content as a string
+  const url = `${baseURL()}/groups/${encodeURIComponent(groupName)}/configuration`;
+  log('info', `Fetching group config for "${groupName}"`);
+
+  const headers = await authHeaders();
+  try {
+    const res = await client.get(url, { headers, params: { raw: true } });
+    // raw=true returns the XML directly as text
+    return typeof res.data === 'string' ? res.data : JSON.stringify(res.data, null, 2);
+  } catch (err) {
+    const status = err.response?.status;
+    const detail = err.response?.data?.detail || err.message;
+    // 400 with "default" can mean empty config — return empty template
+    if (status === 400 || status === 404) {
+      log('info', `No config found for group "${groupName}", returning template`);
+      return defaultAgentConf();
+    }
+    throw new Error(`Could not fetch group config: ${detail} (status ${status})`);
+  }
+}
+
+async function updateGroupConfig(groupName, xmlContent) {
+  const url = `${baseURL()}/groups/${encodeURIComponent(groupName)}/configuration`;
+  log('info', `Updating group config for "${groupName}"`);
+
+  const headers = await authHeaders();
+  try {
+    await client.put(url, xmlContent, {
+      headers: { ...headers, 'Content-Type': 'application/xml' },
+    });
+  } catch (err) {
+    const status = err.response?.status;
+    const detail = err.response?.data?.detail || err.message;
+    throw new Error(`Could not update group config: ${detail} (status ${status})`);
+  }
+}
+
+function defaultAgentConf() {
+  return `<agent_config>
+
+  <!-- Shared configuration applied to all agents in this group -->
+
+  <!-- File integrity monitoring -->
+  <syscheck>
+    <frequency>43200</frequency>
+    <!-- Add directories to monitor -->
+    <!-- <directories>/etc,/usr/bin</directories> -->
+  </syscheck>
+
+</agent_config>
+`;
+}
+
 module.exports = {
   listAgents,
   getAgent,
@@ -218,6 +346,8 @@ module.exports = {
   removeAgentGroup,
   getManagerInfo,
   getManagerStatus,
+  getGroupConfig,
+  updateGroupConfig,
   getToken,
   invalidateToken,
 };

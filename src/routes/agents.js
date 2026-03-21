@@ -136,4 +136,34 @@ router.delete('/groups/:name', async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Get group agent.conf
+// GET /api/agents/groups/:name/config
+// ---------------------------------------------------------------------------
+
+router.get('/groups/:name/config', async (req, res) => {
+  try {
+    const content = await api.getGroupConfig(req.params.name);
+    res.json({ content });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Update group agent.conf
+// PUT /api/agents/groups/:name/config   body: { content }
+// ---------------------------------------------------------------------------
+
+router.put('/groups/:name/config', async (req, res) => {
+  try {
+    const { content } = req.body;
+    if (!content) return res.status(400).json({ error: 'content is required' });
+    await api.updateGroupConfig(req.params.name, content);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

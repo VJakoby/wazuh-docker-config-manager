@@ -107,8 +107,8 @@ router.post('/actions/logtest', async (req, res) => {
   try {
     const { log } = req.body;
     if (!log) return res.status(400).json({ error: 'log line is required' });
-    const output = await docker.runLogtest(log);
-    res.json({ output });
+    const raw = await docker.runLogtest(log);
+    res.json({ raw, parsed: parseLogtest(raw) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -146,6 +146,69 @@ function validateXML(content) {
   } catch (e) {
     return e.message;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Logtest output parser
+// ---------------------------------------------------------------------------
+
+function parseLogtest(raw) {
+  const result = {
+    predecoding: {},
+    decoding:    {},
+    rule:        {},
+    fields:      {},
+    error:       null,
+  };
+
+  if (!raw || raw.trim() === '') {
+    result.error = 'No output from wazuh-logtest';
+    return result;
+  }
+
+  const lines = raw.split('\n');
+  let section = null;
+
+  for (const line of lines) {
+    const l = line.trim();
+    if (!l) continue;
+
+    // Section headers
+    if (l.includes('Phase 1')) { section = 'predecoding'; continue; }
+    if (l.includes('Phase 2')) { section = 'decoding';    continue; }
+    if (l.includes('Phase 3')) { section = 'rule';        continue; }
+
+    // Key: value pairs
+    const match = l.match(/^([\w\s\.]+?):\s+['"]?(.+?)['"]?$/);
+    if (!match) continue;
+
+    const key   = match[1].trim().toLowerCase().replace(/\s+/g, '_');
+    const value = match[2].trim();
+
+    if (section === 'predecoding') {
+      result.predecoding[key] = value;
+    } else if (section === 'decoding') {
+      result.decoding[key] = value;
+    } else if (section === 'rule') {
+      // Hoist key rule fields to top level
+      if (key === 'rule_id' || key === 'id')          result.rule.id          = value;
+      else if (key === 'level')                         result.rule.level       = parseInt(value) || 0;
+      else if (key === 'description')                   result.rule.description = value;
+      else if (key === 'groups' || key === 'group')     result.rule.groups      = value;
+      else if (key === 'firedtimes' || key === 'fired_times') result.rule.firedTimes = value;
+      else                                              result.rule[key]        = value;
+    }
+  }
+
+  // Check if anything matched at all
+  if (!result.rule.id && !result.decoding.name) {
+    // Look for explicit "no rule matched" message
+    if (raw.includes('No rule match') || raw.includes('**No match')) {
+      result.error = 'No rule matched this log line.';
+    }
+  }
+
+  return result;
 }
 
 module.exports = router;
