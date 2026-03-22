@@ -6,8 +6,10 @@ services:
     ports:
       - "${PORT:-8080}:8080"
     environment:
+      # IMPORTANT: WAZUH_API_URL must use the container name of the wazuh manager
+      # as it appears in `docker ps`. Default assumes single-node Wazuh Docker setup.
       - PORT=8080
-      - WAZUH_API_URL=${WAZUH_API_URL:-https://wazuh-manager:55000}
+      - WAZUH_API_URL=${WAZUH_API_URL:-https://single-node-wazuh.manager-1:55000}
       - WAZUH_API_USER=${WAZUH_API_USER:-wazuh-wui}
       - WAZUH_API_PASS=${WAZUH_API_PASS}
       - WAZUH_CONTAINER=${WAZUH_CONTAINER:-single-node-wazuh.manager-1}

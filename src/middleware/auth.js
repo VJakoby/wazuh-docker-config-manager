@@ -8,9 +8,8 @@ function requireAuth(req, res, next) {
   // Always allow auth endpoints through
   if (req.path.startsWith('/api/auth/')) return next();
 
-  // Allow health check through so the frontend can show connection status
-  // even before login
-  if (req.path === '/api/health') return next();
+  // Allow health check and config info through — needed before login
+  if (req.path === '/api/health' || req.path === '/api/config/info') return next();
 
   // All other /api/* routes require a valid session
   if (req.path.startsWith('/api/') && !req.session?.authenticated) {

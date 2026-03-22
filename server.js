@@ -69,6 +69,14 @@ app.use('/api/agents',   agentsRouter);
 app.use('/api/config',   configRouter);
 app.use('/api/backup',   backupRouter);
 
+// Expose config info publicly so login page can show it
+app.get('/api/config/info', (req, res) => {
+  res.json({
+    apiURL:    process.env.WAZUH_API_URL || 'https://localhost:55000',
+    container: process.env.WAZUH_CONTAINER || '(auto-discover)',
+  });
+});
+
 // Health — public
 app.get('/api/health', async (req, res) => {
   const docker = require('./src/docker');

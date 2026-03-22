@@ -116,6 +116,7 @@
     <div class="login-error" id="loginError"></div>
 
     <p class="login-hint">Uses the same credentials as the Wazuh REST API</p>
+    <p class="login-api-url" id="loginApiUrl" style="margin-top:8px;font-size:10px;color:var(--muted);text-align:center;font-family:'JetBrains Mono',monospace;word-break:break-all;"></p>
   </div>
 
   <script>
@@ -123,6 +124,15 @@
     const t = localStorage.getItem('wazuh-theme') ||
       (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
     document.documentElement.setAttribute('data-theme', t);
+
+    // Show which API URL is configured
+    fetch('/api/config/info')
+      .then(r => r.json())
+      .then(d => {
+        const el = document.getElementById('loginApiUrl');
+        if (el && d.apiURL) el.textContent = 'API: ' + d.apiURL;
+      })
+      .catch(() => {});
 
     async function login() {
       const username = document.getElementById('username').value.trim();
