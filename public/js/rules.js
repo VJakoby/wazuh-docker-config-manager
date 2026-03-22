@@ -1,4 +1,5 @@
 import { apiFetch, toast, showConfirm, showNewFileModal } from './app.js';
+import { checkFileConflicts } from './conflicts.js';
 
 let editor        = null;
 let currentFile   = null;
@@ -117,9 +118,29 @@ async function loadFiles(type) {
     allFiles.default = defaultData.files || [];
     applySourceTabs();
     renderFileList(filterFiles(''));
+
+    // Background conflict scan — update badge if issues found
+    runBackgroundConflictScan();
   } catch (err) {
     toast(`Failed to load ${type}: ${err.message}`, 'error');
   }
+}
+
+async function runBackgroundConflictScan() {
+  try {
+    const data = await apiFetch('/api/conflicts');
+    const badge = document.getElementById('conflictsBadge');
+    if (!badge) return;
+    const { conflicts, overrides } = data;
+    const total = conflicts.length + overrides.length;
+    if (total > 0) {
+      badge.textContent = total;
+      badge.style.display = '';
+      badge.title = `${conflicts.length} conflict${conflicts.length !== 1 ? 's' : ''}, ${overrides.length} override${overrides.length !== 1 ? 's' : ''}`;
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch { /* non-critical */ }
 }
 
 function filterFiles(query) {
@@ -217,7 +238,42 @@ async function handleSave() {
   }
 
   const btn = document.getElementById('saveFileBtn');
-  btn.disabled = true; btn.textContent = 'Saving…';
+  btn.disabled = true; btn.textContent = 'Checking…';
+
+  // Run conflict check before saving
+  const { issues } = await checkFileConflicts(editor.getValue(), currentFile, currentSource);
+  if (issues && issues.length > 0) {
+    const conflicts = issues.filter(i => i.severity === 'conflict');
+    const overrides = issues.filter(i => i.severity === 'override');
+
+    let msg = '';
+    if (conflicts.length) {
+      msg += `⚠ ${conflicts.length} conflict${conflicts.length > 1 ? 's' : ''} found:
+`;
+      msg += conflicts.map(i => `  Rule ID ${i.id} already exists in "${i.otherFile}"`).join('
+');
+      msg += '
+
+';
+    }
+    if (overrides.length) {
+      msg += `ℹ ${overrides.length} override${overrides.length > 1 ? 's' : ''}:
+`;
+      msg += overrides.map(i => `  Rule ID ${i.id} overrides default in "${i.otherFile}"`).join('
+');
+    }
+    msg += '
+
+Save anyway?';
+
+    const proceed = await showConfirm('Rule ID Issues Detected', msg);
+    if (!proceed) {
+      btn.disabled = false; btn.textContent = 'Save';
+      return;
+    }
+  }
+
+  btn.textContent = 'Saving…';
   try {
     await apiFetch(
       `/api/${currentType}/${encodeURIComponent(currentFile)}?source=${currentSource}`,

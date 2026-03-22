@@ -1,5 +1,8 @@
 import { initRulesPage }  from './rules.js';
 import { initTerminalPage, updateTerminalTheme } from './terminal.js';
+import { initListsPage }      from './lists.js';
+import { initConflictsPage }  from './conflicts.js';
+import { initContainersPage, destroyContainersPage } from './containers.js';
 import { initAgentsPage } from './agents.js';
 import { initConfigPage } from './config.js';
 import { initBackupPage } from './backup.js';
@@ -173,7 +176,10 @@ const PAGE_LABELS = {
   agents:   'Agents',
   config:   'ossec.conf',
   backup:   'Backup & Restore',
-  terminal: 'Terminal',
+  terminal:    'Terminal',
+  conflicts:   'Rule Conflicts',
+  lists:       'CDB Lists',
+  containers:  'Containers',
 };
 
 const routes = {
@@ -182,7 +188,10 @@ const routes = {
   agents:   () => initAgentsPage(),
   config:   () => initConfigPage(),
   backup:   () => initBackupPage(),
-  terminal: () => initTerminalPage(),
+  terminal:   () => initTerminalPage(),
+  conflicts:  () => initConflictsPage(),
+  lists:      () => initListsPage(),
+  containers: () => initContainersPage(),
 };
 
 function navigate(page) {
@@ -190,6 +199,9 @@ function navigate(page) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === page);
   });
+
+  // Stop containers auto-refresh when leaving that page
+  if (page !== 'containers') destroyContainersPage();
 
   // rules and decoders share #page-rules
   const pageId = page === 'decoders' ? 'rules' : page;

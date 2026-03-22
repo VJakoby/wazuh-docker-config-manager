@@ -1,4 +1,4 @@
-# Wazuh Docker Config Manager
+# wazuh-web-manager
 
 A lightweight web GUI for managing a Wazuh instance running in Docker. Built with Node.js (Express) and vanilla JS — no frontend build step required.
 

@@ -99,6 +99,65 @@
     .input-sm { padding: 5px 8px; font-size: 11.5px; }
     select.input { appearance: none; cursor: pointer; }
 
+    /* Nav badge */
+    .nav-item { position: relative; }
+    .nav-badge { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 99px; font-family: 'JetBrains Mono', monospace; }
+    .nav-badge.badge-conflict { background: var(--red); color: #fff; }
+    .nav-badge.badge-override { background: var(--yellow); color: #000; }
+
+    /* Rule check page */
+    .rulecheck-page { flex: 1; overflow: auto; padding: 18px; }
+    .rc-summary { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .rc-stat { background: var(--surface); border: 1px solid var(--border); border-radius: 3px; padding: 10px 14px; display: flex; flex-direction: column; gap: 3px; }
+    .rc-stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+    .rc-stat-value { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600; color: var(--text); }
+    .rc-stat-value.rc-green  { color: var(--green); }
+    .rc-stat-value.rc-red    { color: var(--red); }
+    .rc-stat-value.rc-yellow { color: var(--yellow); }
+    .rc-results { display: flex; flex-direction: column; gap: 8px; }
+    .rc-scanning { color: var(--muted); font-size: 12px; padding: 20px 0; }
+    .rc-error { color: var(--red); font-size: 12px; padding: 12px; background: var(--toast-e-bg); border: 1px solid var(--toast-e-bd); border-radius: 3px; }
+    .rc-clear { display: flex; align-items: center; gap: 10px; color: var(--green); font-size: 13px; padding: 20px 0; }
+    .rc-clear-icon { font-size: 18px; }
+    .rc-group-title { font-size: 11px; font-weight: 600; padding: 10px 0 6px; margin-top: 8px; }
+    .rc-group-conflict { color: var(--red); }
+    .rc-group-override { color: var(--yellow); }
+    .rc-override-note { font-size: 11px; color: var(--dim); margin-bottom: 8px; line-height: 1.6; padding: 8px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 3px; }
+    .rc-issue { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+    .rc-issue-conflict { border-left: 3px solid var(--red); }
+    .rc-issue-override { border-left: 3px solid var(--yellow); }
+    .rc-issue-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 6px; }
+    .rc-issue-left { display: flex; align-items: center; gap: 8px; }
+    .rc-badge { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 3px; font-family: 'JetBrains Mono', monospace; letter-spacing: .5px; }
+    .rc-badge-conflict { background: var(--red); color: #fff; }
+    .rc-badge-override { background: var(--yellow); color: #000; }
+    .rc-issue-id { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; color: var(--text); }
+    .rc-issue-message { padding: 0 12px 8px; font-size: 12px; color: var(--dim); }
+    .rc-issue-files { padding: 0 12px 10px; display: flex; flex-direction: column; gap: 4px; }
+    .rc-file { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+    .rc-file-source { font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 3px; text-transform: uppercase; letter-spacing: .4px; }
+    .rc-source-custom  { background: #1a2e55; color: var(--accent); }
+    .rc-source-default { background: var(--surface2); color: var(--muted); }
+    .rc-file-name { font-family: 'JetBrains Mono', monospace; color: var(--dim); }
+    .rc-file-line { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); }
+
+    /* Conflict badge */
+    .conflict-nav-badge {
+      display: none; margin-left: auto;
+      background: var(--red); color: #fff;
+      font-size: 9px; font-weight: 600;
+      padding: 1px 5px; border-radius: 99px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .editor-conflict-btn {
+      display: flex; align-items: center; gap: 4px;
+    }
+    .editor-conflict-btn .badge {
+      background: var(--red); color: #fff;
+      font-size: 9px; padding: 1px 5px;
+      border-radius: 99px; font-family: 'JetBrains Mono', monospace;
+    }
+
     /* Source tabs (Custom / Default) */
     .source-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
     .source-tab {
@@ -307,6 +366,65 @@
     .file-panel { transition: width 200ms ease, min-width 200ms ease; overflow: hidden; }
     .file-panel.collapsed { width: 0; min-width: 0; border: none; }
 
+    /* Conflicts page */
+    .conflicts-page { flex: 1; overflow: auto; padding: 18px; }
+    .conflicts-scanning { color: var(--dim); font-size: 12px; padding: 20px 0; }
+    .conflicts-error { color: var(--red); font-size: 12px; padding: 12px 0; }
+    .conflicts-all-clear { color: var(--green); font-size: 12px; font-weight: 500; }
+    .conflicts-summary { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; min-height: 24px; }
+    .conflicts-badge { font-size: 11px; font-weight: 500; padding: 2px 9px; border-radius: 99px; }
+    .badge-conflict { background: var(--toast-e-bg); color: var(--red); border: 1px solid var(--toast-e-bd); }
+    .badge-override { background: #2a1f0a; color: var(--yellow); border: 1px solid #4a3a10; }
+    .conflicts-scanned { font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+    .conflicts-section { margin-bottom: 20px; }
+    .conflicts-section-title { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+    .conflict-title { color: var(--red); }
+    .override-title { color: var(--yellow); }
+    .conflicts-desc { font-size: 11px; color: var(--muted); margin-bottom: 10px; line-height: 1.5; }
+    .conflict-item { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 12px 14px; margin-bottom: 8px; }
+    .conflict-item--conflict { border-left: 3px solid var(--red); }
+    .conflict-item--override { border-left: 3px solid var(--yellow); }
+    .conflict-item-header { margin-bottom: 5px; }
+    .conflict-id { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; color: var(--text); }
+    .conflict-item-detail { font-size: 12px; color: var(--dim); margin-bottom: 4px; }
+    .conflict-file { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+    .custom-file { color: var(--accent); }
+    .default-file { color: var(--dim); }
+    .conflict-item-hint { font-size: 11px; color: var(--muted); font-style: italic; }
+
+    /* CDB Lists page */
+    .lists-page { display: flex; flex: 1; overflow: hidden; }
+    .lists-file-panel { width: 195px; min-width: 195px; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--surface); transition: background 180ms; }
+    .lists-editor-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .lists-editor-bar { display: flex; align-items: center; justify-content: space-between; padding: 0 14px; height: 38px; min-height: 38px; border-bottom: 1px solid var(--border); background: var(--surface); transition: background 180ms; }
+    .lists-editor-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--dim); }
+    .lists-editor-actions { display: flex; gap: 5px; align-items: center; }
+    .list-entry-count { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); }
+    .lists-toolbar { display: flex; align-items: center; gap: 7px; padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--surface); }
+    .lists-toolbar .input { flex: 1; }
+    .lists-entries-wrap { flex: 1; overflow: auto; }
+    .lists-table { width: 100%; border-collapse: collapse; }
+    .lists-table th { text-align: left; padding: 7px 14px; font-size: 10.5px; font-weight: 500; color: var(--muted); border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: .4px; }
+    .lists-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+    .lists-table td:last-child { width: 36px; text-align: center; }
+    .list-entry-row:hover td { background: var(--surface2); }
+    .lists-table .input { width: 100%; }
+    .list-placeholder { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; }
+
+    /* Containers page */
+    .containers-page { flex: 1; overflow: auto; padding: 18px; }
+    .containers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-top: 14px; }
+    .container-card { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 14px; transition: background 180ms; }
+    .container-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .container-card-name { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500; color: var(--text); }
+    .container-status-badge { font-size: 10.5px; padding: 1px 7px; border-radius: 99px; }
+    .cs-running { color: var(--green); background: var(--toast-s-bg); }
+    .cs-stopped { color: var(--red); background: var(--toast-e-bg); }
+    .container-card-image { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+    .container-card-status { font-size: 11px; color: var(--dim); margin-bottom: 2px; }
+    .container-card-id { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); margin-bottom: 12px; }
+    .container-card-actions { display: flex; gap: 6px; }
+
     /* Terminal page */
     .terminal-page { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #0d0d0d; }
     .terminal-bar {
@@ -367,6 +485,10 @@
       <a href="#decoders" class="nav-item" data-page="decoders">
         <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><line x1="8" y1="5" x2="8" y2="8"/><line x1="8" y1="8" x2="11" y2="10"/></svg>Decoders
       </a>
+      <a href="#rulecheck" class="nav-item" data-page="rulecheck">
+        <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><line x1="8" y1="5" x2="8" y2="8"/><line x1="8" y1="10.5" x2="8" y2="11"/></svg>Rule Check
+        <span class="nav-badge" id="rulecheckNavBadge" style="display:none"></span>
+      </a>
       <div class="nav-section">Management</div>
       <a href="#agents" class="nav-item" data-page="agents">
         <svg viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>Agents
@@ -375,6 +497,16 @@
         <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/></svg>ossec.conf
       </a>
       <div class="nav-section">Tools</div>
+      <a href="#conflicts" class="nav-item" data-page="conflicts">
+        <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><line x1="8" y1="5" x2="8" y2="8"/><circle cx="8" cy="11" r=".5" fill="currentColor" stroke="none"/></svg>Rule Conflicts
+        <span class="conflict-nav-badge" id="conflictsBadge"></span>
+      </a>
+      <a href="#lists" class="nav-item" data-page="lists">
+        <svg viewBox="0 0 16 16"><line x1="8" y1="2" x2="8" y2="14"/><line x1="2" y1="5" x2="14" y2="5"/><line x1="2" y1="9" x2="14" y2="9"/><line x1="2" y1="13" x2="14" y2="13"/></svg>CDB Lists
+      </a>
+      <a href="#containers" class="nav-item" data-page="containers">
+        <svg viewBox="0 0 16 16"><rect x="1" y="4" width="14" height="4" rx="1"/><rect x="1" y="10" width="14" height="4" rx="1"/><circle cx="4" cy="6" r="1" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1" fill="currentColor" stroke="none"/></svg>Containers
+      </a>
       <a href="#backup" class="nav-item" data-page="backup">
         <svg viewBox="0 0 16 16"><path d="M13 10v3H3v-3"/><path d="M8 2v8"/><polyline points="5 7 8 10 11 7"/></svg>Backup
       </a>
@@ -596,6 +728,87 @@
             <div class="restore-result" id="restoreResult" style="display:none">
               <pre id="restoreResultBody"></pre>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Rule Check ── -->
+      <div class="page" id="page-rulecheck">
+        <div class="rulecheck-page">
+          <div class="page-header">
+            <h2>Rule Conflict Check</h2>
+            <button class="btn btn-primary btn-sm" id="rulecheckRunBtn">↺ Re-scan</button>
+          </div>
+          <p style="font-size:12px;color:var(--dim);margin-bottom:14px;line-height:1.6">
+            Scans all custom and default rule files for duplicate rule IDs.
+            <strong style="color:var(--red)">Conflicts</strong> are duplicate IDs within your custom files.
+            <strong style="color:var(--yellow)">Overrides</strong> are custom rules that replace a default Wazuh rule.
+          </p>
+          <div class="rc-summary" id="rulecheckSummary"></div>
+          <div class="rc-results" id="rulecheckResults">
+            <div class="rc-scanning">Press Re-scan to check for conflicts.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Rule Conflicts ── -->
+      <div class="page" id="page-conflicts">
+        <div class="conflicts-page">
+          <div class="page-header">
+            <h2>Rule Conflicts</h2>
+            <button class="btn btn-ghost btn-sm" id="conflictsScanBtn">↺ Scan</button>
+          </div>
+          <div class="conflicts-summary" id="conflictsSummary"></div>
+          <div id="conflictsResults"></div>
+        </div>
+      </div>
+
+      <!-- ── CDB Lists ── -->
+      <div class="page" id="page-lists">
+        <div class="lists-page">
+          <div class="lists-file-panel">
+            <div class="fp-head">
+              <span class="fp-label">CDB Lists</span>
+              <button class="btn-new" id="newListBtn">+ New</button>
+            </div>
+            <div class="fp-search"><input type="text" id="listFileSearch" placeholder="filter…" /></div>
+            <ul class="file-list" id="listFileList"></ul>
+          </div>
+          <div class="lists-editor-area">
+            <div id="listPlaceholder" class="list-placeholder">← select a list to edit</div>
+            <div id="listEditor" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+              <div class="lists-editor-bar">
+                <span class="lists-editor-title" id="listEditorTitle">—</span>
+                <div class="lists-editor-actions">
+                  <span class="list-entry-count" id="listEntryCount"></span>
+                  <button class="btn btn-ghost btn-sm" id="listDeleteBtn">Delete</button>
+                  <button class="btn btn-primary btn-sm" id="listSaveBtn">Save</button>
+                </div>
+              </div>
+              <div class="lists-toolbar">
+                <input type="text" class="input input-sm" id="listSearch" placeholder="Search entries…" />
+                <button class="btn btn-ghost btn-sm" id="listAddEntryBtn">+ Add entry</button>
+              </div>
+              <div class="lists-entries-wrap">
+                <table class="lists-table">
+                  <thead><tr><th>Key</th><th>Value</th><th></th></tr></thead>
+                  <tbody id="listEntriesBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Containers ── -->
+      <div class="page" id="page-containers">
+        <div class="containers-page">
+          <div class="page-header">
+            <h2>Containers</h2>
+            <button class="btn btn-ghost btn-sm" id="containersRefreshBtn">↺ Refresh</button>
+          </div>
+          <div class="containers-grid" id="containersGrid">
+            <div style="color:var(--muted);font-size:12px">Loading…</div>
           </div>
         </div>
       </div>

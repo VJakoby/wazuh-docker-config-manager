@@ -234,6 +234,57 @@ async function containerInfo() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Container management — for the health panel
+// ---------------------------------------------------------------------------
+
+/**
+ * List all Wazuh-related containers (manager, indexer, dashboard).
+ * Returns an array of container info objects.
+ */
+async function listWazuhContainers() {
+  const docker = getDocker();
+  const all    = await docker.listContainers({ all: true });
+
+  return all
+    .filter(c => c.Names.some(n => n.toLowerCase().includes('wazuh')))
+    .map(c => ({
+      id:      c.Id.slice(0, 12),
+      name:    c.Names[0].replace(/^\//, ''),
+      image:   c.Image,
+      status:  c.Status,
+      state:   c.State,
+      started: c.Status,
+    }));
+}
+
+/**
+ * Restart a container by name or ID.
+ */
+async function restartContainer(nameOrId) {
+  const docker    = getDocker();
+  const container = docker.getContainer(nameOrId);
+  await container.restart({ t: 10 }); // 10s grace period
+}
+
+/**
+ * Stop a container by name or ID.
+ */
+async function stopContainer(nameOrId) {
+  const docker    = getDocker();
+  const container = docker.getContainer(nameOrId);
+  await container.stop({ t: 10 });
+}
+
+/**
+ * Start a container by name or ID.
+ */
+async function startContainer(nameOrId) {
+  const docker    = getDocker();
+  const container = docker.getContainer(nameOrId);
+  await container.start();
+}
+
 module.exports = {
   getContainer,
   resetContainer,
@@ -245,4 +296,8 @@ module.exports = {
   reloadManager,
   runLogtest,
   containerInfo,
+  listWazuhContainers,
+  restartContainer,
+  stopContainer,
+  startContainer,
 };
