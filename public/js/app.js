@@ -1,4 +1,5 @@
 import { initRulesPage }  from './rules.js';
+import { initTerminalPage, updateTerminalTheme } from './terminal.js';
 import { initAgentsPage } from './agents.js';
 import { initConfigPage } from './config.js';
 import { initBackupPage } from './backup.js';
@@ -74,6 +75,13 @@ export async function apiFetch(url, options = {}) {
     ...options,
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
+
+  // Session expired or not authenticated — redirect to login
+  if (res.status === 401) {
+    window.location.href = '/login.html';
+    return;
+  }
+
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
@@ -132,6 +140,14 @@ async function updateStatus() {
 // Sidebar reload button
 // ---------------------------------------------------------------------------
 
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  try {
+    await fetch('/api/auth/logout', { method: 'POST' });
+  } finally {
+    window.location.href = '/login.html';
+  }
+});
+
 document.getElementById('reloadBtn').addEventListener('click', async () => {
   const btn = document.getElementById('reloadBtn');
   btn.disabled    = true;
@@ -157,6 +173,7 @@ const PAGE_LABELS = {
   agents:   'Agents',
   config:   'ossec.conf',
   backup:   'Backup & Restore',
+  terminal: 'Terminal',
 };
 
 const routes = {
@@ -165,6 +182,7 @@ const routes = {
   agents:   () => initAgentsPage(),
   config:   () => initConfigPage(),
   backup:   () => initBackupPage(),
+  terminal: () => initTerminalPage(),
 };
 
 function navigate(page) {
@@ -175,6 +193,8 @@ function navigate(page) {
 
   // rules and decoders share #page-rules
   const pageId = page === 'decoders' ? 'rules' : page;
+  // terminal has its own page div but is inside #page-rules structure
+
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById(`page-${pageId}`)?.classList.add('active');
 
@@ -197,7 +217,47 @@ window.addEventListener('hashchange', onHashChange);
 
 window.__cmEditors = window.__cmEditors || [];
 
-updateStatus();
-updateConsoleLink();
-setInterval(updateStatus, 30_000);
-onHashChange();
+// Collapsible file panel
+(function() {
+  const panel  = document.getElementById('filePanel');
+  const toggle = document.getElementById('filePanelToggle');
+  if (!panel || !toggle) return;
+
+  let collapsed = localStorage.getItem('filePanelCollapsed') === 'true';
+
+  function apply() {
+    panel.classList.toggle('collapsed', collapsed);
+    toggle.textContent = collapsed ? '▶' : '◀';
+    toggle.title = collapsed ? 'Show file panel' : 'Hide file panel';
+    localStorage.setItem('filePanelCollapsed', collapsed);
+  }
+
+  toggle.addEventListener('click', () => {
+    collapsed = !collapsed;
+    apply();
+  });
+
+  apply();
+})();
+
+// Check session is valid before loading the app
+(async () => {
+  try {
+    const me = await fetch('/api/auth/me');
+    if (me.status === 401) {
+      window.location.href = '/login.html';
+      return;
+    }
+    const data = await me.json();
+    // Show logged-in user in topbar
+    const userEl = document.getElementById('topbarUser');
+    if (userEl && data.username) userEl.textContent = data.username;
+  } catch {
+    // Server unreachable — still try to load
+  }
+
+  updateStatus();
+  updateConsoleLink();
+  setInterval(updateStatus, 30_000);
+  onHashChange();
+})();

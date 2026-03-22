@@ -26,14 +26,19 @@ function log(level, msg, extra = {}) {
 // Auth
 // ---------------------------------------------------------------------------
 
-async function getToken() {
+/**
+ * Get a Wazuh API token.
+ * If credentials are provided (from the user's session), use those.
+ * Otherwise fall back to the .env credentials for backwards compatibility.
+ */
+async function getToken(credentials = null) {
   if (_token && Date.now() < _tokenExpiry) {
     log('info', 'Using cached token');
     return _token;
   }
 
-  const user = process.env.WAZUH_API_USER || 'wazuh';
-  const pass = process.env.WAZUH_API_PASS || 'wazuh';
+  const user = credentials?.username || process.env.WAZUH_API_USER || 'wazuh';
+  const pass = credentials?.password || process.env.WAZUH_API_PASS || 'wazuh';
   const url  = `${baseURL()}/security/user/authenticate`;
 
   log('info', `Authenticating with Wazuh API`, { url, user });

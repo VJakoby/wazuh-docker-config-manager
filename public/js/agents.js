@@ -154,12 +154,24 @@ async function handleEnroll() {
 function renderEnrollCommands(os) {
   if (!enrollData) return;
   document.getElementById('enrollCommands').textContent = enrollData.commands?.[os] || '(no commands for this OS)';
+  const labels = { linux: 'install-linux.sh', windows: 'install-windows.ps1', macos: 'install-macos.sh' };
+  const labelEl = document.getElementById('enrollCommandsLabel');
+  if (labelEl) labelEl.textContent = labels[os] || 'install-commands.sh';
+  // Reset copy button
+  const btn = document.getElementById('enrollCopyBtn');
+  if (btn) { btn.textContent = 'Copy'; btn.style.color = ''; }
 }
 
 async function handleCopyCommands() {
+  const btn  = document.getElementById('enrollCopyBtn');
+  const text = document.getElementById('enrollCommands').textContent;
   try {
-    await navigator.clipboard.writeText(document.getElementById('enrollCommands').textContent);
-    toast('Commands copied', 'success');
+    await navigator.clipboard.writeText(text);
+    if (btn) {
+      btn.textContent = '✓ Copied';
+      btn.style.color = 'var(--green)';
+      setTimeout(() => { btn.textContent = 'Copy'; btn.style.color = ''; }, 2000);
+    }
   } catch {
     toast('Copy failed — select and copy manually', 'error');
   }

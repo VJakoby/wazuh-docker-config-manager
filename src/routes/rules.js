@@ -1,29 +1,48 @@
 'use strict';
 
 const express = require('express');
-const router = express.Router();
-const docker = require('../docker');
+const router  = express.Router();
+const docker  = require('../docker');
 
-const RULES_DIR = '/var/ossec/etc/rules';
-const DECODERS_DIR = '/var/ossec/etc/decoders';
+// Custom (editable by users)
+const CUSTOM_RULES_DIR    = '/var/ossec/etc/rules';
+const CUSTOM_DECODERS_DIR = '/var/ossec/etc/decoders';
 
-function dirFor(type) {
-  if (type === 'decoders') return DECODERS_DIR;
-  return RULES_DIR;
+// Default (shipped with Wazuh — still editable but clearly labelled)
+const DEFAULT_RULES_DIR    = '/var/ossec/ruleset/rules';
+const DEFAULT_DECODERS_DIR = '/var/ossec/ruleset/decoders';
+
+/**
+ * Resolve the directory for a given type + source combination.
+ * type:   'rules' | 'decoders'
+ * source: 'custom' | 'default'  (default: 'custom')
+ */
+function dirFor(type, source) {
+  const isDecoder = type === 'decoders';
+  const isDefault = source === 'default';
+  if (isDecoder) return isDefault ? DEFAULT_DECODERS_DIR : CUSTOM_DECODERS_DIR;
+  return isDefault ? DEFAULT_RULES_DIR : CUSTOM_RULES_DIR;
+}
+
+function typeFromUrl(baseUrl) {
+  return baseUrl.includes('decoder') ? 'decoders' : 'rules';
 }
 
 // ---------------------------------------------------------------------------
 // List files
-// GET /api/rules        → lists rule XML files
-// GET /api/decoders     → lists decoder XML files
+// GET /api/rules?source=custom|default
+// GET /api/decoders?source=custom|default
 // ---------------------------------------------------------------------------
 
 router.get('/', async (req, res) => {
   try {
-    const dir = dirFor(req.baseUrl.includes('decoder') ? 'decoders' : 'rules');
-    const all = await docker.listDir(dir);
+    const type   = typeFromUrl(req.baseUrl);
+    const source = req.query.source || 'custom';
+    const dir    = dirFor(type, source);
+
+    const all   = await docker.listDir(dir);
     const files = all.filter(f => f.endsWith('.xml'));
-    res.json({ files });
+    res.json({ files, source, dir });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -31,15 +50,18 @@ router.get('/', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // Read a single file
-// GET /api/rules/:filename
+// GET /api/rules/:filename?source=custom|default
 // ---------------------------------------------------------------------------
 
 router.get('/:filename', async (req, res) => {
   try {
-    const dir = dirFor(req.baseUrl.includes('decoder') ? 'decoders' : 'rules');
+    const type     = typeFromUrl(req.baseUrl);
+    const source   = req.query.source || 'custom';
+    const dir      = dirFor(type, source);
     const safeName = sanitiseFilename(req.params.filename);
+
     const content = await docker.readFile(`${dir}/${safeName}`);
-    res.json({ filename: safeName, content });
+    res.json({ filename: safeName, content, source, path: `${dir}/${safeName}` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -47,12 +69,14 @@ router.get('/:filename', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // Create or update a file
-// PUT /api/rules/:filename   body: { content }
+// PUT /api/rules/:filename?source=custom|default   body: { content }
 // ---------------------------------------------------------------------------
 
 router.put('/:filename', async (req, res) => {
   try {
-    const dir = dirFor(req.baseUrl.includes('decoder') ? 'decoders' : 'rules');
+    const type     = typeFromUrl(req.baseUrl);
+    const source   = req.query.source || 'custom';
+    const dir      = dirFor(type, source);
     const safeName = sanitiseFilename(req.params.filename);
     const { content } = req.body;
 
@@ -62,7 +86,7 @@ router.put('/:filename', async (req, res) => {
     if (xmlErr) return res.status(400).json({ error: `Invalid XML: ${xmlErr}` });
 
     await docker.writeFile(`${dir}/${safeName}`, content);
-    res.json({ ok: true, filename: safeName });
+    res.json({ ok: true, filename: safeName, source, path: `${dir}/${safeName}` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -70,13 +94,17 @@ router.put('/:filename', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // Delete a file
-// DELETE /api/rules/:filename
+// DELETE /api/rules/:filename?source=custom|default
 // ---------------------------------------------------------------------------
 
 router.delete('/:filename', async (req, res) => {
   try {
-    const dir = dirFor(req.baseUrl.includes('decoder') ? 'decoders' : 'rules');
+    const type     = typeFromUrl(req.baseUrl);
+    const source   = req.query.source || 'custom';
+    const dir      = dirFor(type, source);
     const safeName = sanitiseFilename(req.params.filename);
+
+    // Warn but still allow deleting default files — user knows what they're doing
     await docker.deleteFile(`${dir}/${safeName}`);
     res.json({ ok: true });
   } catch (err) {
@@ -119,18 +147,11 @@ router.post('/actions/logtest', async (req, res) => {
 // ---------------------------------------------------------------------------
 
 function sanitiseFilename(name) {
-  // Strip path traversal and enforce .xml extension
   const base = name.replace(/[^a-zA-Z0-9_\-\.]/g, '').replace(/\.{2,}/g, '');
   return base.endsWith('.xml') ? base : `${base}.xml`;
 }
 
-/**
- * Very basic XML well-formedness check using the built-in parser.
- * Returns an error string or null.
- */
 function validateXML(content) {
-  // We can't use DOMParser in Node, so do a minimal tag-balance check.
-  // For real validation, consider the 'fast-xml-parser' package.
   try {
     let depth = 0;
     const tagRe = /<\/?[a-zA-Z][^>]*>/g;
@@ -139,8 +160,6 @@ function validateXML(content) {
       if (m[0].startsWith('</')) depth--;
       else if (!m[0].endsWith('/>')) depth++;
     }
-    // After parsing all tags depth doesn't need to be exactly 0 for a group
-    // of elements — just make sure it's not negative
     if (depth < 0) return 'Unmatched closing tags';
     return null;
   } catch (e) {
@@ -148,18 +167,8 @@ function validateXML(content) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Logtest output parser
-// ---------------------------------------------------------------------------
-
 function parseLogtest(raw) {
-  const result = {
-    predecoding: {},
-    decoding:    {},
-    rule:        {},
-    fields:      {},
-    error:       null,
-  };
+  const result = { predecoding: {}, decoding: {}, rule: {}, fields: {}, error: null };
 
   if (!raw || raw.trim() === '') {
     result.error = 'No output from wazuh-logtest';
@@ -172,13 +181,10 @@ function parseLogtest(raw) {
   for (const line of lines) {
     const l = line.trim();
     if (!l) continue;
-
-    // Section headers
     if (l.includes('Phase 1')) { section = 'predecoding'; continue; }
     if (l.includes('Phase 2')) { section = 'decoding';    continue; }
     if (l.includes('Phase 3')) { section = 'rule';        continue; }
 
-    // Key: value pairs
     const match = l.match(/^([\w\s\.]+?):\s+['"]?(.+?)['"]?$/);
     if (!match) continue;
 
@@ -190,19 +196,16 @@ function parseLogtest(raw) {
     } else if (section === 'decoding') {
       result.decoding[key] = value;
     } else if (section === 'rule') {
-      // Hoist key rule fields to top level
-      if (key === 'rule_id' || key === 'id')          result.rule.id          = value;
-      else if (key === 'level')                         result.rule.level       = parseInt(value) || 0;
-      else if (key === 'description')                   result.rule.description = value;
-      else if (key === 'groups' || key === 'group')     result.rule.groups      = value;
+      if (key === 'rule_id' || key === 'id')                result.rule.id          = value;
+      else if (key === 'level')                              result.rule.level       = parseInt(value) || 0;
+      else if (key === 'description')                        result.rule.description = value;
+      else if (key === 'groups' || key === 'group')          result.rule.groups      = value;
       else if (key === 'firedtimes' || key === 'fired_times') result.rule.firedTimes = value;
-      else                                              result.rule[key]        = value;
+      else                                                   result.rule[key]        = value;
     }
   }
 
-  // Check if anything matched at all
   if (!result.rule.id && !result.decoding.name) {
-    // Look for explicit "no rule matched" message
     if (raw.includes('No rule match') || raw.includes('**No match')) {
       result.error = 'No rule matched this log line.';
     }

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>wazuh-web-manager — Login</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    [data-theme="dark"] {
+      --bg: #13151c; --surface: #1a1d26; --surface2: #1f2232;
+      --border: #272b3a; --border2: #2e3448;
+      --text: #c9d1e0; --dim: #5c6480; --muted: #3a3f55;
+      --accent: #5b8dee; --green: #3fb950; --red: #f85149;
+    }
+    [data-theme="light"] {
+      --bg: #f5f6f8; --surface: #ffffff; --surface2: #f0f1f4;
+      --border: #dde0e8; --border2: #c8ccd8;
+      --text: #1e2030; --dim: #6b7280; --muted: #9ca3af;
+      --accent: #2563eb; --green: #16a34a; --red: #dc2626;
+    }
+
+    html, body {
+      height: 100%; font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg); color: var(--text);
+      font-size: 13px; line-height: 1.5;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 180ms;
+    }
+
+    .login-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; padding: 32px 28px; width: 340px;
+    }
+
+    .login-logo {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 24px;
+    }
+    .login-logo svg { width: 32px; height: 32px; flex-shrink: 0; }
+    .login-logo-text { display: flex; flex-direction: column; gap: 1px; }
+    .login-logo-name { font-size: 15px; font-weight: 600; color: var(--text); }
+    .login-logo-sub  { font-size: 11px; color: var(--muted); }
+
+    .login-title {
+      font-size: 13px; font-weight: 500; color: var(--dim);
+      margin-bottom: 18px; padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .form-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+    .form-label { font-size: 11px; color: var(--muted); }
+    .form-input {
+      padding: 8px 10px; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 3px;
+      color: var(--text); font-size: 13px; font-family: inherit;
+      outline: none; transition: border-color 80ms; width: 100%;
+    }
+    .form-input:focus { border-color: var(--border2); }
+    .form-input::placeholder { color: var(--muted); }
+
+    .login-btn {
+      width: 100%; padding: 9px; margin-top: 6px;
+      background: var(--accent); color: #fff;
+      border: none; border-radius: 3px;
+      font-size: 13px; font-weight: 500; font-family: inherit;
+      cursor: pointer; transition: opacity 80ms;
+    }
+    .login-btn:hover { opacity: .9; }
+    .login-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+    .login-error {
+      margin-top: 12px; padding: 8px 10px;
+      background: #1e0e0e; border: 1px solid #3d1c1c;
+      border-radius: 3px; color: var(--red);
+      font-size: 12px; display: none;
+    }
+
+    .login-hint {
+      margin-top: 14px; font-size: 11px; color: var(--muted);
+      text-align: center; line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="login-logo">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M32 4L8 14v18c0 13.3 10.3 25.7 24 28 13.7-2.3 24-14.7 24-28V14L32 4z" fill="url(#lg)"/>
+        <path d="M20 32l7 8 17-16" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <defs>
+          <linearGradient id="lg" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#00c8f0"/>
+            <stop offset="100%" stop-color="#0070c0"/>
+          </linearGradient>
+        </defs>
+      </svg>
+      <div class="login-logo-text">
+        <span class="login-logo-name">Wazuh</span>
+        <span class="login-logo-sub">Docker Config Manager</span>
+      </div>
+    </div>
+
+    <div class="login-title">Sign in with your Wazuh API credentials</div>
+
+    <div class="form-field">
+      <label class="form-label" for="username">Username</label>
+      <input class="form-input" type="text" id="username" placeholder="wazuh-wui" autocomplete="username" />
+    </div>
+    <div class="form-field">
+      <label class="form-label" for="password">Password</label>
+      <input class="form-input" type="password" id="password" placeholder="••••••••" autocomplete="current-password" />
+    </div>
+
+    <button class="login-btn" id="loginBtn">Sign in</button>
+    <div class="login-error" id="loginError"></div>
+
+    <p class="login-hint">Uses the same credentials as the Wazuh REST API</p>
+  </div>
+
+  <script>
+    // Apply saved theme
+    const t = localStorage.getItem('wazuh-theme') ||
+      (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', t);
+
+    async function login() {
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const btn      = document.getElementById('loginBtn');
+      const errEl    = document.getElementById('loginError');
+
+      if (!username || !password) {
+        errEl.textContent = 'Please enter your username and password.';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      btn.disabled    = true;
+      btn.textContent = 'Signing in…';
+      errEl.style.display = 'none';
+
+      try {
+        const res  = await fetch('/api/auth/login', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          errEl.textContent   = data.error || 'Login failed';
+          errEl.style.display = 'block';
+          btn.disabled        = false;
+          btn.textContent     = 'Sign in';
+          return;
+        }
+
+        // Redirect to main app
+        window.location.href = '/';
+      } catch {
+        errEl.textContent   = 'Could not reach the server. Is it running?';
+        errEl.style.display = 'block';
+        btn.disabled        = false;
+        btn.textContent     = 'Sign in';
+      }
+    }
+
+    document.getElementById('loginBtn').addEventListener('click', login);
+    document.getElementById('password').addEventListener('keydown', e => {
+      if (e.key === 'Enter') login();
+    });
+    document.getElementById('username').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('password').focus();
+    });
+  </script>
+</body>
+</html>
