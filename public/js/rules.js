@@ -1,11 +1,11 @@
 import { apiFetch, toast, showConfirm, showNewFileModal } from './app.js';
 
-let editor      = null;
-let currentFile = null;
-let currentType = null;
-let currentSource = 'custom';  // 'custom' | 'default'
-let allFiles    = [];
-let ltHistory   = [];
+let editor        = null;
+let currentFile   = null;
+let currentType   = null;
+let currentSource = 'custom'; // 'custom' | 'default'
+let allFiles      = { custom: [], default: [] };
+let ltHistory     = [];
 
 const DEFAULT_RULE = `<group name="local,">
 
@@ -32,19 +32,36 @@ export function initRulesPage(type) {
   if (currentType !== type) {
     currentFile   = null;
     currentSource = 'custom';
-    resetEditor();
+    if (editor) {
+      window.__cmEditors = (window.__cmEditors || []).filter(e => e !== editor);
+      editor.toTextArea();
+      editor = null;
+    }
+    const wrapper = document.getElementById('editorWrapper');
+    if (wrapper) wrapper.innerHTML = '<div class="editor-placeholder">← select a file to edit</div>';
+    document.getElementById('editorFilename').textContent   = 'select a file';
+    document.getElementById('editorActions').style.display = 'none';
+    document.getElementById('logtestPanel').style.display  = 'none';
+    document.getElementById('hFile').textContent           = 'select a file';
   }
 
   currentType = type;
   document.getElementById('filesPanelLabel').textContent =
     type === 'decoders' ? 'Decoders' : 'Rules';
 
-  // Source tabs
-  replaceWithClone('sourceCustom').addEventListener('click', () => switchSource('custom'));
-  replaceWithClone('sourceDefault').addEventListener('click', () => switchSource('default'));
-
-  // Sync tab UI to current source
-  updateSourceTabs();
+  // Wire source tabs — clone each button to remove stale listeners
+  document.querySelectorAll('.source-tab').forEach(btn => {
+    const clone = btn.cloneNode(true);
+    btn.replaceWith(clone);
+  });
+  document.querySelectorAll('.source-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentSource = btn.dataset.source;
+      applySourceTabs();
+      const search = document.getElementById('fileSearch');
+      renderFileList(filterFiles(search ? search.value : ''));
+    });
+  });
 
   replaceWithClone('newFileBtn').addEventListener('click', () => handleNewFile(type));
   replaceWithClone('saveFileBtn').addEventListener('click', handleSave);
@@ -60,10 +77,10 @@ export function initRulesPage(type) {
     if (e.key === 'Enter') runLogtest();
   });
   document.getElementById('fileSearch').addEventListener('input', e => {
-    renderFileList(allFiles.filter(f => f.includes(e.target.value)));
+    renderFileList(filterFiles(e.target.value));
   });
 
-  loadFiles(type, currentSource);
+  loadFiles(type);
 }
 
 function replaceWithClone(id) {
@@ -74,64 +91,40 @@ function replaceWithClone(id) {
   return clone;
 }
 
-function resetEditor() {
-  if (editor) {
-    window.__cmEditors = (window.__cmEditors || []).filter(e => e !== editor);
-    editor.toTextArea();
-    editor = null;
-  }
-  const wrapper = document.getElementById('editorWrapper');
-  if (wrapper) wrapper.innerHTML = '<div class="editor-placeholder">← select a file to edit</div>';
-  const warning = document.getElementById('editorWarning');
-  if (warning) warning.style.display = 'none';
-  const fn = document.getElementById('editorFilename');
-  if (fn) fn.textContent = 'select a file';
-  const actions = document.getElementById('editorActions');
-  if (actions) actions.style.display = 'none';
-  const lt = document.getElementById('logtestPanel');
-  if (lt) lt.style.display = 'none';
-  const hf = document.getElementById('hFile');
-  if (hf) hf.textContent = 'select a file';
-  currentFile = null;
+// ---------------------------------------------------------------------------
+// Source tab state
+// ---------------------------------------------------------------------------
+
+function applySourceTabs() {
+  document.querySelectorAll('.source-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.source === currentSource);
+  });
+  const newBtn = document.getElementById('newFileBtn');
+  if (newBtn) newBtn.style.display = currentSource === 'custom' ? '' : 'none';
 }
 
 // ---------------------------------------------------------------------------
-// Source switcher
+// Load files — both sources in parallel
 // ---------------------------------------------------------------------------
 
-function switchSource(source) {
-  if (currentSource === source) return;
-  currentSource = source;
-  currentFile   = null;
-  resetEditor();
-  updateSourceTabs();
-  loadFiles(currentType, source);
-}
-
-function updateSourceTabs() {
-  const customTab   = document.getElementById('sourceCustom');
-  const defaultTab  = document.getElementById('sourceDefault');
-  const newBtn      = document.getElementById('newFileBtn');
-
-  if (customTab)  customTab.classList.toggle('active',  currentSource === 'custom');
-  if (defaultTab) defaultTab.classList.toggle('active', currentSource === 'default');
-
-  // Hide New button for default files — Wazuh owns those
-  if (newBtn) newBtn.style.display = currentSource === 'default' ? 'none' : '';
-}
-
-// ---------------------------------------------------------------------------
-// File list
-// ---------------------------------------------------------------------------
-
-async function loadFiles(type, source) {
+async function loadFiles(type) {
   try {
-    const data = await apiFetch(`/api/${type}?source=${source}`);
-    allFiles = data.files || [];
-    renderFileList(allFiles);
+    const [customData, defaultData] = await Promise.all([
+      apiFetch(`/api/${type}?source=custom`),
+      apiFetch(`/api/${type}?source=default`),
+    ]);
+    allFiles.custom  = customData.files  || [];
+    allFiles.default = defaultData.files || [];
+    applySourceTabs();
+    renderFileList(filterFiles(''));
   } catch (err) {
     toast(`Failed to load ${type}: ${err.message}`, 'error');
   }
+}
+
+function filterFiles(query) {
+  const q = (query || '').toLowerCase();
+  return (allFiles[currentSource] || []).filter(f => f.toLowerCase().includes(q));
 }
 
 function renderFileList(files) {
@@ -148,7 +141,7 @@ function renderFileList(files) {
     const li = document.createElement('li');
     li.className = 'file-list-item' + (filename === currentFile ? ' active' : '');
     li.textContent = filename;
-    li.addEventListener('click', () => openFile(filename));
+    li.addEventListener('click', () => openFile(filename, currentSource));
     list.appendChild(li);
   });
 }
@@ -157,20 +150,26 @@ function renderFileList(files) {
 // Open file
 // ---------------------------------------------------------------------------
 
-async function openFile(filename) {
+async function openFile(filename, source) {
   try {
     const data = await apiFetch(
-      `/api/${currentType}/${encodeURIComponent(filename)}?source=${currentSource}`
+      `/api/${currentType}/${encodeURIComponent(filename)}?source=${source}`
     );
-    currentFile = filename;
+    currentFile   = filename;
+    currentSource = source;
 
-    document.getElementById('editorFilename').textContent   = filename;
+    // Show full path in editor bar
+    document.getElementById('editorFilename').textContent   = data.path || filename;
     document.getElementById('editorActions').style.display = 'flex';
     document.getElementById('hFile').textContent           = filename;
 
-    // Show warning banner for default files
-    const warning = document.getElementById('editorWarning');
-    if (warning) warning.style.display = currentSource === 'default' ? 'block' : 'none';
+    // Warn on default files via delete button title
+    const deleteBtn = document.getElementById('deleteFileBtn');
+    if (deleteBtn) {
+      deleteBtn.title = source === 'default'
+        ? '⚠ This is a default Wazuh file — deleting may break things'
+        : '';
+    }
 
     const wrapper = document.getElementById('editorWrapper');
     wrapper.innerHTML = '';
@@ -182,9 +181,7 @@ async function openFile(filename) {
       editor.toTextArea();
     }
 
-    const cmTheme = document.documentElement.getAttribute('data-theme') === 'light'
-      ? 'default' : 'dracula';
-
+    const cmTheme = document.documentElement.getAttribute('data-theme') === 'light' ? 'default' : 'dracula';
     editor = CodeMirror.fromTextArea(ta, {
       mode: 'xml', theme: cmTheme, lineNumbers: true,
       autoCloseTags: true, matchBrackets: true,
@@ -199,7 +196,6 @@ async function openFile(filename) {
     document.querySelectorAll('#fileList .file-list-item').forEach(el => {
       el.classList.toggle('active', el.textContent === filename);
     });
-
   } catch (err) {
     toast(`Failed to open ${filename}: ${err.message}`, 'error');
   }
@@ -211,6 +207,15 @@ async function openFile(filename) {
 
 async function handleSave() {
   if (!editor || !currentFile) return;
+
+  if (currentSource === 'default') {
+    const confirmed = await showConfirm(
+      '⚠ Editing default Wazuh file',
+      `"${currentFile}" is a default Wazuh ruleset file. Modifying it may be overwritten during upgrades. Continue?`
+    );
+    if (!confirmed) return;
+  }
+
   const btn = document.getElementById('saveFileBtn');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
@@ -240,8 +245,10 @@ async function handleNewFile(type) {
       method: 'PUT', body: { content },
     });
     toast(`Created ${filename}`, 'success');
-    await loadFiles(type, 'custom');
-    openFile(filename);
+    await loadFiles(type);
+    currentSource = 'custom';
+    applySourceTabs();
+    openFile(filename, 'custom');
   } catch (err) {
     toast(`Failed to create file: ${err.message}`, 'error');
   }
@@ -253,24 +260,28 @@ async function handleNewFile(type) {
 
 async function handleDelete() {
   if (!currentFile) return;
-
-  const isDefault = currentSource === 'default';
-  const confirmed = await showConfirm(
-    isDefault ? '⚠ Delete default file?' : 'Delete file',
-    isDefault
-      ? `"${currentFile}" is a default Wazuh file. Deleting it may break Wazuh detection. Are you sure?`
-      : `Delete "${currentFile}"? This cannot be undone.`
-  );
+  const warning = currentSource === 'default'
+    ? `⚠ "${currentFile}" is a default Wazuh file. Deleting it may break Wazuh. Are you sure?`
+    : `Delete "${currentFile}"? This cannot be undone.`;
+  const confirmed = await showConfirm('Delete file', warning);
   if (!confirmed) return;
-
   try {
     await apiFetch(
       `/api/${currentType}/${encodeURIComponent(currentFile)}?source=${currentSource}`,
       { method: 'DELETE' }
     );
     toast(`${currentFile} deleted`, 'success');
-    resetEditor();
-    await loadFiles(currentType, currentSource);
+    currentFile = null;
+    document.getElementById('editorFilename').textContent   = 'select a file';
+    document.getElementById('editorActions').style.display = 'none';
+    document.getElementById('hFile').textContent           = 'select a file';
+    document.getElementById('editorWrapper').innerHTML     = '<div class="editor-placeholder">← select a file to edit</div>';
+    document.getElementById('logtestPanel').style.display = 'none';
+    if (editor) {
+      window.__cmEditors = (window.__cmEditors || []).filter(e => e !== editor);
+      editor.toTextArea(); editor = null;
+    }
+    await loadFiles(currentType);
   } catch (err) {
     toast(`Delete failed: ${err.message}`, 'error');
   }
@@ -291,10 +302,8 @@ async function runLogtest() {
   const input  = document.getElementById('logtestInput');
   const log    = input.value.trim();
   if (!log) return;
-
   const runBtn = document.getElementById('logtestRunBtn');
   runBtn.disabled = true; runBtn.textContent = 'Running…';
-
   try {
     const data = await apiFetch('/api/rules/actions/logtest', {
       method: 'POST', body: { log },
@@ -310,10 +319,7 @@ async function runLogtest() {
   }
 }
 
-function clearHistory() {
-  ltHistory = [];
-  renderHistory();
-}
+function clearHistory() { ltHistory = []; renderHistory(); }
 
 function renderHistory() {
   const container = document.getElementById('logtestHistory');
@@ -328,48 +334,40 @@ function renderHistory() {
 function renderEntry(entry) {
   const { log, result, ts } = entry;
   const time = ts.toLocaleTimeString();
-
   if (result.error && !result.rule.id) {
-    return `
-      <div class="lt-entry lt-entry--miss">
-        <div class="lt-entry-header">
-          <span class="lt-entry-log" title="${esc(log)}">${esc(truncate(log, 80))}</span>
-          <span class="lt-entry-time">${time}</span>
-        </div>
-        <div class="lt-entry-error">${esc(result.error)}</div>
-      </div>`;
+    return `<div class="lt-entry lt-entry--miss">
+      <div class="lt-entry-header">
+        <span class="lt-entry-log" title="${escHtml(log)}">${escHtml(truncate(log, 80))}</span>
+        <span class="lt-entry-time">${time}</span>
+      </div>
+      <div class="lt-entry-error">${escHtml(result.error)}</div>
+    </div>`;
   }
-
   const level      = result.rule.level || 0;
   const levelClass = level >= 12 ? 'lt-level--high' : level >= 7 ? 'lt-level--med' : 'lt-level--low';
-  const rows = obj => Object.entries(obj || {})
-    .map(([k, v]) => `<tr><td class="lt-key">${esc(k)}</td><td>${esc(String(v))}</td></tr>`)
+  const rows = (obj) => Object.entries(obj || {})
+    .map(([k, v]) => `<tr><td class="lt-key">${escHtml(k)}</td><td>${escHtml(String(v))}</td></tr>`)
     .join('');
-
-  return `
-    <div class="lt-entry lt-entry--match">
-      <div class="lt-entry-header">
-        <span class="lt-entry-log" title="${esc(log)}">${esc(truncate(log, 80))}</span>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span class="lt-level ${levelClass}">lvl ${level}</span>
-          <span class="lt-entry-time">${time}</span>
-        </div>
+  return `<div class="lt-entry lt-entry--match">
+    <div class="lt-entry-header">
+      <span class="lt-entry-log" title="${escHtml(log)}">${escHtml(truncate(log, 80))}</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="lt-level ${levelClass}">lvl ${level}</span>
+        <span class="lt-entry-time">${time}</span>
       </div>
-      ${result.rule.description ? `<div class="lt-rule-desc">${esc(result.rule.description)}</div>` : ''}
-      <div class="lt-sections">
-        ${rows(result.predecoding) ? `<div class="lt-section"><div class="lt-section-title">Pre-decoding</div><table class="lt-table">${rows(result.predecoding)}</table></div>` : ''}
-        ${rows(result.decoding)    ? `<div class="lt-section"><div class="lt-section-title">Decoding</div><table class="lt-table">${rows(result.decoding)}</table></div>`    : ''}
-        ${rows(result.rule)        ? `<div class="lt-section"><div class="lt-section-title">Rule</div><table class="lt-table">${rows(result.rule)}</table></div>`            : ''}
-      </div>
-    </div>`;
+    </div>
+    ${result.rule.description ? `<div class="lt-rule-desc">${escHtml(result.rule.description)}</div>` : ''}
+    <div class="lt-sections">
+      ${rows(result.predecoding) ? `<div class="lt-section"><div class="lt-section-title">Pre-decoding</div><table class="lt-table">${rows(result.predecoding)}</table></div>` : ''}
+      ${rows(result.decoding)    ? `<div class="lt-section"><div class="lt-section-title">Decoding</div><table class="lt-table">${rows(result.decoding)}</table></div>`    : ''}
+      ${rows(result.rule)        ? `<div class="lt-section"><div class="lt-section-title">Rule</div><table class="lt-table">${rows(result.rule)}</table></div>`             : ''}
+    </div>
+  </div>`;
 }
 
-function esc(str) {
-  return String(str)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-
 function truncate(str, n) {
   return str.length > n ? str.slice(0, n) + '…' : str;
 }
