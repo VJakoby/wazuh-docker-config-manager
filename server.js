@@ -16,7 +16,6 @@ const authRouter       = require('./src/routes/auth');
 const listsRouter      = require('./src/routes/lists');
 const containersRouter = require('./src/routes/containers');
 const conflictsRouter  = require('./src/routes/conflicts');
-const rulecheckRouter  = require('./src/routes/rulecheck');
 
 const app  = express();
 const PORT = process.env.PORT || 8080;
@@ -75,7 +74,6 @@ app.use('/api/backup',     backupRouter);
 app.use('/api/lists',      listsRouter);
 app.use('/api/containers', containersRouter);
 app.use('/api/conflicts',  conflictsRouter);
-app.use('/api/rulecheck',  rulecheckRouter);
 
 // Expose config info publicly so login page can show it
 app.get('/api/config/info', (req, res) => {
