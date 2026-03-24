@@ -1,4 +1,4 @@
-import { apiFetch, toast, showConfirm, showNewFileModal } from './app.js';
+import { apiFetch, toast, showConfirm, showHistoryModal, showNewFileModal } from './app.js';
 import { checkFileConflicts } from './conflicts.js';
 
 let editor        = null;
@@ -65,6 +65,7 @@ export function initRulesPage(type) {
   });
 
   replaceWithClone('newFileBtn').addEventListener('click', () => handleNewFile(type));
+  replaceWithClone('fileHistoryBtn').addEventListener('click', handleHistory);
   replaceWithClone('saveFileBtn').addEventListener('click', handleSave);
   replaceWithClone('deleteFileBtn').addEventListener('click', handleDelete);
   replaceWithClone('logtestToggleBtn').addEventListener('click', toggleLogtest);
@@ -185,6 +186,8 @@ async function openFile(filename, source) {
     document.getElementById('hFile').textContent           = filename;
 
     // Warn on default files via delete button title
+    const warning = document.getElementById('editorWarning');
+    if (warning) warning.style.display = source === 'default' ? 'block' : 'none';
     const deleteBtn = document.getElementById('deleteFileBtn');
     if (deleteBtn) {
       deleteBtn.title = source === 'default'
@@ -248,42 +251,34 @@ async function handleSave() {
 
     let msg = '';
     if (conflicts.length) {
-      msg += `⚠ ${conflicts.length} conflict${conflicts.length > 1 ? 's' : ''} found:
-`;
-      msg += conflicts.map(i => `  Rule ID ${i.id} already exists in "${i.otherFile}"`).join('
-');
-      msg += '
-
-';
+      msg += `⚠ ${conflicts.length} conflict${conflicts.length > 1 ? 's' : ''} found:\n`;
+      msg += conflicts.map(i => `  Rule ID ${i.id} already exists in "${i.otherFile}"`).join('\n');
+      msg += '\n\n';
     }
     if (overrides.length) {
-      msg += `ℹ ${overrides.length} override${overrides.length > 1 ? 's' : ''}:
-`;
-      msg += overrides.map(i => `  Rule ID ${i.id} overrides default in "${i.otherFile}"`).join('
-');
+      msg += `ℹ ${overrides.length} override${overrides.length > 1 ? 's' : ''}:\n`;
+      msg += overrides.map(i => `  Rule ID ${i.id} overrides default in "${i.otherFile}"`).join('\n');
     }
-    msg += '
-
-Save anyway?';
+    msg += '\n\nSave anyway?';
 
     const proceed = await showConfirm('Rule ID Issues Detected', msg);
     if (!proceed) {
-      btn.disabled = false; btn.textContent = 'Save';
+      btn.disabled = false; btn.textContent = 'Validate & Save';
       return;
     }
   }
 
   btn.textContent = 'Saving…';
   try {
-    await apiFetch(
+    const result = await apiFetch(
       `/api/${currentType}/${encodeURIComponent(currentFile)}?source=${currentSource}`,
       { method: 'PUT', body: { content: editor.getValue() } }
     );
-    toast(`${currentFile} saved`, 'success');
+    toast(result.snapshotCreated ? `${currentFile} saved • snapshot created` : `${currentFile} saved`, 'success');
   } catch (err) {
     toast(`Save failed: ${err.message}`, 'error');
   } finally {
-    btn.disabled = false; btn.textContent = 'Save';
+    btn.disabled = false; btn.textContent = 'Validate & Save';
   }
 }
 
@@ -330,6 +325,7 @@ async function handleDelete() {
     currentFile = null;
     document.getElementById('editorFilename').textContent   = 'select a file';
     document.getElementById('editorActions').style.display = 'none';
+    document.getElementById('editorWarning').style.display = 'none';
     document.getElementById('hFile').textContent           = 'select a file';
     document.getElementById('editorWrapper').innerHTML     = '<div class="editor-placeholder">← select a file to edit</div>';
     document.getElementById('logtestPanel').style.display = 'none';
@@ -340,6 +336,28 @@ async function handleDelete() {
     await loadFiles(currentType);
   } catch (err) {
     toast(`Delete failed: ${err.message}`, 'error');
+  }
+}
+
+async function handleHistory() {
+  if (!currentFile) return;
+
+  const result = await showHistoryModal({
+    scope: currentType,
+    filename: currentFile,
+    source: currentSource,
+  });
+  if (!result || result.action !== 'restore') return;
+
+  try {
+    await apiFetch(
+      `/api/history/${encodeURIComponent(result.id)}/restore?scope=${encodeURIComponent(currentType)}&filename=${encodeURIComponent(currentFile)}&source=${encodeURIComponent(currentSource)}`,
+      { method: 'POST' }
+    );
+    toast(`${currentFile} restored from snapshot`, 'success');
+    await openFile(currentFile, currentSource);
+  } catch (err) {
+    toast(`Restore failed: ${err.message}`, 'error');
   }
 }
 

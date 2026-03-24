@@ -38,15 +38,21 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Authentication failed — no token returned' });
     }
 
-    // Store credentials and token in session
+    // Store only the validated token in session.
     req.session.authenticated = true;
     req.session.username       = username;
-    req.session.password       = password; // needed to re-auth if token expires
     req.session.wazuhToken     = token;
     req.session.loginTime      = Date.now();
 
-    console.log(`[auth] Login successful for "${username}"`);
-    res.json({ ok: true, username });
+    req.session.save((saveErr) => {
+      if (saveErr) {
+        console.log(`[auth] Session save failed for "${username}" — ${saveErr.message}`);
+        return res.status(500).json({ error: 'Could not persist login session' });
+      }
+
+      console.log(`[auth] Login successful for "${username}"`);
+      res.json({ ok: true, username });
+    });
 
   } catch (err) {
     const status = err.response?.status;

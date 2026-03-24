@@ -14,9 +14,14 @@ services:
       - WAZUH_API_PASS=${WAZUH_API_PASS}
       - WAZUH_CONTAINER=${WAZUH_CONTAINER:-single-node-wazuh.manager-1}
       - WAZUH_DASHBOARD_PORT=${WAZUH_DASHBOARD_PORT:-443}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      - DATA_DIR=${DATA_DIR:-/app/data}
+      - NODE_ENV=production
     volumes:
       # Mount the Docker socket so we can manage the Wazuh container
       - /var/run/docker.sock:/var/run/docker.sock
+      - wazuh-web-manager-data:/app/data
     networks:
       - wazuh-web-manager-net
       # Also attach to the Wazuh network so we can reach the API
@@ -30,3 +35,6 @@ networks:
   wazuh-net:
     external: true
     name: ${WAZUH_NETWORK:-single-node_default}
+
+volumes:
+  wazuh-web-manager-data:

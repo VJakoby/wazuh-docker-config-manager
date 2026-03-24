@@ -96,8 +96,16 @@ function invalidateToken() {
   _tokenExpiry = 0;
 }
 
-async function authHeaders() {
-  const token = await getToken();
+function fromSession(session) {
+  if (!session?.authenticated || !session?.wazuhToken) return null;
+  return {
+    token: session.wazuhToken,
+    username: session.username,
+  };
+}
+
+async function authHeaders(auth = null) {
+  const token = auth?.token || await getToken();
   return { Authorization: `Bearer ${token}` };
 }
 
@@ -105,13 +113,13 @@ async function authHeaders() {
 // Generic request helper
 // ---------------------------------------------------------------------------
 
-async function request(method, path, data = null, params = {}) {
+async function request(method, path, data = null, params = {}, auth = null) {
   const url = `${baseURL()}${path}`;
   log('info', `→ ${method.toUpperCase()} ${url}`, Object.keys(params).length ? { params } : {});
 
   let headers;
   try {
-    headers = await authHeaders();
+    headers = await authHeaders(auth);
   } catch (authErr) {
     // Auth itself failed — surface clearly
     throw authErr;
@@ -132,6 +140,12 @@ async function request(method, path, data = null, params = {}) {
     const detail = body?.detail || body?.message || body?.error || err.message;
 
     log('error', `← ${status ?? 'ERR'} ${method.toUpperCase()} ${path}`, { detail, body });
+
+    if (status === 401 && auth?.token) {
+      const sessionErr = new Error('Your Wazuh session expired. Please sign in again.');
+      sessionErr.code = 'SESSION_EXPIRED';
+      throw sessionErr;
+    }
 
     if (status === 401) {
       log('info', 'Got 401 — token may have expired, refreshing and retrying once');
@@ -171,39 +185,39 @@ async function request(method, path, data = null, params = {}) {
 // Agents
 // ---------------------------------------------------------------------------
 
-async function listAgents(params = {}) {
+async function listAgents(params = {}, auth = null) {
   const defaults = { limit: 500, offset: 0, select: 'id,name,ip,os.name,os.version,os.platform,status,lastKeepAlive,version,group' };
-  const data = await request('GET', '/agents', null, { ...defaults, ...params });
+  const data = await request('GET', '/agents', null, { ...defaults, ...params }, auth);
   return data?.affected_items ?? [];
 }
 
-async function getAgent(agentId) {
+async function getAgent(agentId, auth = null) {
   const data = await request('GET', '/agents', null, {
     agents_list: agentId,
     select: 'id,name,ip,os,status,lastKeepAlive,version,group,dateAdd,manager,node_name',
-  });
+  }, auth);
   return data?.affected_items?.[0] ?? null;
 }
 
-async function deleteAgents(agentIds) {
+async function deleteAgents(agentIds, auth = null) {
   const ids = Array.isArray(agentIds) ? agentIds.join(',') : agentIds;
   return request('DELETE', '/agents', null, {
     agents_list: ids,
     status: 'all',
     older_than: '0s',
-  });
+  }, auth);
 }
 
-async function getEnrollmentInfo(agentName, agentIP = 'any', groupName = 'default') {
-  const created = await request('POST', '/agents', { name: agentName, ip: agentIP });
+async function getEnrollmentInfo(agentName, agentIP = 'any', groupName = 'default', auth = null) {
+  const created = await request('POST', '/agents', { name: agentName, ip: agentIP }, {}, auth);
   const agentId = created?.id;
   if (!agentId) throw new Error('Failed to create agent entry — no ID returned');
 
-  const keyData = await request('GET', `/agents/${agentId}/key`);
+  const keyData = await request('GET', `/agents/${agentId}/key`, null, {}, auth);
   const key = keyData?.affected_items?.[0]?.key ?? '';
 
   if (groupName && groupName !== 'default') {
-    await assignAgentGroup(agentId, groupName).catch(err => {
+    await assignAgentGroup(agentId, groupName, auth).catch(err => {
       log('error', `Could not assign agent to group "${groupName}"`, { err: err.message });
     });
   }
@@ -248,49 +262,49 @@ function buildEnrollCommands(agentName, managerIP, key, group) {
 // Groups
 // ---------------------------------------------------------------------------
 
-async function listGroups() {
-  const data = await request('GET', '/groups', null, { select: 'name,count,configSum' });
+async function listGroups(auth = null) {
+  const data = await request('GET', '/groups', null, { select: 'name,count,configSum' }, auth);
   return data?.affected_items ?? [];
 }
 
-async function createGroup(name) {
-  return request('POST', '/groups', { group_id: name });
+async function createGroup(name, auth = null) {
+  return request('POST', '/groups', { group_id: name }, {}, auth);
 }
 
-async function deleteGroup(name) {
-  return request('DELETE', '/groups', null, { groups_list: name });
+async function deleteGroup(name, auth = null) {
+  return request('DELETE', '/groups', null, { groups_list: name }, auth);
 }
 
-async function assignAgentGroup(agentId, groupName) {
-  return request('PUT', `/agents/${agentId}/group/${groupName}`);
+async function assignAgentGroup(agentId, groupName, auth = null) {
+  return request('PUT', `/agents/${agentId}/group/${groupName}`, null, {}, auth);
 }
 
-async function removeAgentGroup(agentId, groupName) {
-  return request('DELETE', `/agents/${agentId}/group/${groupName}`);
+async function removeAgentGroup(agentId, groupName, auth = null) {
+  return request('DELETE', `/agents/${agentId}/group/${groupName}`, null, {}, auth);
 }
 
 // ---------------------------------------------------------------------------
 // Manager info
 // ---------------------------------------------------------------------------
 
-async function getManagerInfo() {
-  return request('GET', '/manager/info');
+async function getManagerInfo(auth = null) {
+  return request('GET', '/manager/info', null, {}, auth);
 }
 
-async function getManagerStatus() {
-  return request('GET', '/manager/status');
+async function getManagerStatus(auth = null) {
+  return request('GET', '/manager/status', null, {}, auth);
 }
 
 // ---------------------------------------------------------------------------
 // Group config (agent.conf)
 // ---------------------------------------------------------------------------
 
-async function getGroupConfig(groupName) {
+async function getGroupConfig(groupName, auth = null) {
   // The API returns the XML content as a string
   const url = `${baseURL()}/groups/${encodeURIComponent(groupName)}/configuration`;
   log('info', `Fetching group config for "${groupName}"`);
 
-  const headers = await authHeaders();
+  const headers = await authHeaders(auth);
   try {
     const res = await client.get(url, { headers, params: { raw: true } });
     // raw=true returns the XML directly as text
@@ -307,11 +321,11 @@ async function getGroupConfig(groupName) {
   }
 }
 
-async function updateGroupConfig(groupName, xmlContent) {
+async function updateGroupConfig(groupName, xmlContent, auth = null) {
   const url = `${baseURL()}/groups/${encodeURIComponent(groupName)}/configuration`;
   log('info', `Updating group config for "${groupName}"`);
 
-  const headers = await authHeaders();
+  const headers = await authHeaders(auth);
   try {
     await client.put(url, xmlContent, {
       headers: { ...headers, 'Content-Type': 'application/xml' },
@@ -355,4 +369,5 @@ module.exports = {
   updateGroupConfig,
   getToken,
   invalidateToken,
+  fromSession,
 };

@@ -6,19 +6,28 @@ const express     = require('express');
 const path        = require('path');
 const session     = require('express-session');
 const requireAuth = require('./src/middleware/auth');
-const { attachTerminal } = require('./src/terminal');
 
 const rulesRouter  = require('./src/routes/rules');
 const agentsRouter = require('./src/routes/agents');
 const configRouter = require('./src/routes/config');
 const backupRouter = require('./src/routes/backup');
 const authRouter       = require('./src/routes/auth');
+const historyRouter    = require('./src/routes/history');
 const listsRouter      = require('./src/routes/lists');
 const containersRouter = require('./src/routes/containers');
 const conflictsRouter  = require('./src/routes/conflicts');
 
 const app  = express();
 const PORT = process.env.PORT || 8080;
+const sessionSecret = process.env.SESSION_SECRET;
+
+if (process.env.NODE_ENV === 'production' && (!sessionSecret || sessionSecret === 'change-me-to-a-random-string')) {
+  throw new Error('SESSION_SECRET must be set to a non-default value in production');
+}
+
+if (process.env.COOKIE_SECURE === 'true') {
+  app.set('trust proxy', 1);
+}
 
 // ---------------------------------------------------------------------------
 // Request logger
@@ -41,13 +50,14 @@ app.use((req, res, next) => {
 // ---------------------------------------------------------------------------
 
 const sessionMiddleware = session({
-  secret:            process.env.SESSION_SECRET || 'wazuh-mgr-secret-change-me',
+  secret:            sessionSecret || 'dev-only-session-secret',
   resave:            false,
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
     maxAge:   8 * 60 * 60 * 1000,
     sameSite: 'strict',
+    secure:   process.env.COOKIE_SECURE === 'true',
   },
 });
 
@@ -71,6 +81,7 @@ app.use('/api/decoders', rulesRouter);
 app.use('/api/agents',   agentsRouter);
 app.use('/api/config',   configRouter);
 app.use('/api/backup',     backupRouter);
+app.use('/api/history',    historyRouter);
 app.use('/api/lists',      listsRouter);
 app.use('/api/containers', containersRouter);
 app.use('/api/conflicts',  conflictsRouter);
@@ -126,16 +137,12 @@ app.use((err, req, res, _next) => {
 });
 
 // ---------------------------------------------------------------------------
-// Start HTTP server + attach WebSocket terminal
+// Start HTTP server
 // ---------------------------------------------------------------------------
 
-const server = app.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`\nwazuh-web-manager running at http://localhost:${PORT}`);
   console.log(`  Container : ${process.env.WAZUH_CONTAINER || '(auto-discover)'}`);
   console.log(`  API URL   : ${process.env.WAZUH_API_URL   || 'https://localhost:55000'}`);
-  console.log(`  Auth      : Wazuh API credentials`);
-  console.log(`  Terminal  : ws://localhost:${PORT}/terminal\n`);
+  console.log(`  Auth      : Wazuh API credentials\n`);
 });
-
-// Pass the session middleware so the terminal can verify auth
-attachTerminal(server, sessionMiddleware);

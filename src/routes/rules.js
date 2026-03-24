@@ -3,6 +3,8 @@
 const express = require('express');
 const router  = express.Router();
 const docker  = require('../docker');
+const history = require('../history');
+const { XMLValidator } = require('fast-xml-parser');
 
 // Custom (editable by users)
 const CUSTOM_RULES_DIR    = '/var/ossec/etc/rules';
@@ -85,8 +87,29 @@ router.put('/:filename', async (req, res) => {
     const xmlErr = validateXML(content);
     if (xmlErr) return res.status(400).json({ error: `Invalid XML: ${xmlErr}` });
 
-    await docker.writeFile(`${dir}/${safeName}`, content);
-    res.json({ ok: true, filename: safeName, source, path: `${dir}/${safeName}` });
+    const targetPath = `${dir}/${safeName}`;
+    const previous = await docker.readFile(targetPath).catch(() => null);
+    if (previous !== null && previous !== content) {
+      await history.saveSnapshot({
+        scope: type,
+        type,
+        source,
+        filename: safeName,
+        path: targetPath,
+        action: 'pre-save',
+        note: `Before saving ${safeName}`,
+        content: previous,
+      });
+    }
+
+    await docker.writeFile(targetPath, content);
+    res.json({
+      ok: true,
+      filename: safeName,
+      source,
+      path: targetPath,
+      snapshotCreated: previous !== null && previous !== content,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -104,8 +127,23 @@ router.delete('/:filename', async (req, res) => {
     const dir      = dirFor(type, source);
     const safeName = sanitiseFilename(req.params.filename);
 
+    const targetPath = `${dir}/${safeName}`;
+    const previous = await docker.readFile(targetPath).catch(() => null);
+    if (previous !== null) {
+      await history.saveSnapshot({
+        scope: type,
+        type,
+        source,
+        filename: safeName,
+        path: targetPath,
+        action: 'delete',
+        note: `Deleted ${safeName}`,
+        content: previous,
+      });
+    }
+
     // Warn but still allow deleting default files — user knows what they're doing
-    await docker.deleteFile(`${dir}/${safeName}`);
+    await docker.deleteFile(targetPath);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -148,23 +186,14 @@ router.post('/actions/logtest', async (req, res) => {
 
 function sanitiseFilename(name) {
   const base = name.replace(/[^a-zA-Z0-9_\-\.]/g, '').replace(/\.{2,}/g, '');
+  if (!base) throw new Error('filename is required');
   return base.endsWith('.xml') ? base : `${base}.xml`;
 }
 
 function validateXML(content) {
-  try {
-    let depth = 0;
-    const tagRe = /<\/?[a-zA-Z][^>]*>/g;
-    let m;
-    while ((m = tagRe.exec(content)) !== null) {
-      if (m[0].startsWith('</')) depth--;
-      else if (!m[0].endsWith('/>')) depth++;
-    }
-    if (depth < 0) return 'Unmatched closing tags';
-    return null;
-  } catch (e) {
-    return e.message;
-  }
+  const result = XMLValidator.validate(content);
+  if (result === true) return null;
+  return result.err?.msg || 'Malformed XML';
 }
 
 function parseLogtest(raw) {

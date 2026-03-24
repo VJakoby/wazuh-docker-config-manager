@@ -3,6 +3,7 @@
 const express  = require('express');
 const router   = express.Router();
 const docker   = require('../docker');
+const history  = require('../history');
 const JSZip    = require('jszip');
 const multer   = require('multer');
 
@@ -13,6 +14,22 @@ const BACKUP_PATHS = {
 };
 const RULES_DIR    = '/var/ossec/etc/rules';
 const DECODERS_DIR = '/var/ossec/etc/decoders';
+
+async function snapshotBeforeRestore(scope, filename, targetPath, note) {
+  const previous = await docker.readFile(targetPath).catch(() => null);
+  if (previous === null) return;
+
+  await history.saveSnapshot({
+    scope,
+    type: scope === 'config' ? 'config' : scope,
+    source: 'custom',
+    filename,
+    path: targetPath,
+    action: 'pre-restore',
+    note,
+    content: previous,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Create backup
@@ -135,6 +152,7 @@ router.post('/restore', upload.single('file'), async (req, res) => {
     if (ossecFile) {
       try {
         const content = await ossecFile.async('string');
+        await snapshotBeforeRestore('config', 'ossec.conf', '/var/ossec/etc/ossec.conf', 'Before backup restore');
         await docker.writeFile('/var/ossec/etc/ossec.conf', content);
         restored.push('ossec.conf');
         console.log('[backup] Restored ossec.conf');
@@ -155,6 +173,7 @@ router.post('/restore', upload.single('file'), async (req, res) => {
       try {
         const content  = await file.async('string');
         const filename = path.split('/').pop();
+        await snapshotBeforeRestore('rules', filename, `${RULES_DIR}/${filename}`, 'Before backup restore');
         await docker.writeFile(`${RULES_DIR}/${filename}`, content);
         restored.push(path);
         console.log(`[backup] Restored ${path}`);
@@ -175,6 +194,7 @@ router.post('/restore', upload.single('file'), async (req, res) => {
       try {
         const content  = await file.async('string');
         const filename = path.split('/').pop();
+        await snapshotBeforeRestore('decoders', filename, `${DECODERS_DIR}/${filename}`, 'Before backup restore');
         await docker.writeFile(`${DECODERS_DIR}/${filename}`, content);
         restored.push(path);
         console.log(`[backup] Restored ${path}`);

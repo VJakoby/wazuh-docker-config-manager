@@ -1,5 +1,4 @@
 import { initRulesPage }  from './rules.js';
-import { initTerminalPage, updateTerminalTheme } from './terminal.js';
 import { initListsPage }      from './lists.js';
 import { initConflictsPage }  from './conflicts.js';
 import { initContainersPage, destroyContainersPage } from './containers.js';
@@ -65,6 +64,93 @@ export function showNewFileModal(type) {
       if (e.key === 'Enter')  cleanup(input.value.trim() || null);
       if (e.key === 'Escape') cleanup(null);
     });
+  });
+}
+
+export function showHistoryModal(target) {
+  return new Promise(async (resolve) => {
+    const modal = document.getElementById('historyModal');
+    const title = document.getElementById('historyTitle');
+    const list = document.getElementById('historyList');
+    const previewTitle = document.getElementById('historyPreviewTitle');
+    const previewBody = document.getElementById('historyPreviewBody');
+    const restoreBtn = document.getElementById('historyRestoreBtn');
+    const closeBtn = document.getElementById('historyCloseBtn');
+
+    let selected = null;
+    let entries = [];
+
+    const cleanup = (result) => {
+      modal.style.display = 'none';
+      document.getElementById('historyRestoreBtn').replaceWith(restoreBtn.cloneNode(true));
+      document.getElementById('historyCloseBtn').replaceWith(closeBtn.cloneNode(true));
+      resolve(result);
+    };
+
+    async function loadPreview(id) {
+      selected = entries.find(entry => entry.id === id) || null;
+      if (!selected) return;
+
+      previewTitle.textContent = `${selected.action} · ${formatTs(selected.createdAt)}`;
+      previewBody.innerHTML = '<div class="history-empty">Loading snapshot…</div>';
+
+      try {
+        const query = new URLSearchParams(target);
+        const data = await apiFetch(`/api/history/${encodeURIComponent(id)}?${query.toString()}`);
+        previewBody.innerHTML = `<pre>${escapeHtml(data.entry.content || '')}</pre>`;
+        restoreBtn.disabled = false;
+      } catch (err) {
+        previewBody.innerHTML = `<div class="history-empty">${escapeHtml(err.message)}</div>`;
+      }
+
+      list.querySelectorAll('.history-entry').forEach(el => {
+        el.classList.toggle('active', el.dataset.id === id);
+      });
+    }
+
+    title.textContent = `History — ${target.filename}`;
+    modal.style.display = 'flex';
+    list.innerHTML = '<div class="history-empty">Loading snapshots…</div>';
+    previewTitle.textContent = 'Select a snapshot';
+    previewBody.innerHTML = '<div class="history-empty">Select a snapshot to preview its contents.</div>';
+    restoreBtn.disabled = true;
+
+    try {
+      const query = new URLSearchParams(target);
+      const data = await apiFetch(`/api/history?${query.toString()}`);
+      entries = data.entries || [];
+
+      if (!entries.length) {
+        list.innerHTML = '<div class="history-empty">No snapshots yet for this file.</div>';
+      } else {
+        list.innerHTML = entries.map(entry => `
+          <button class="history-entry" data-id="${entry.id}">
+            <div class="history-entry-title">${escapeHtml(entry.action)}</div>
+            <div class="history-entry-meta">${escapeHtml(formatTs(entry.createdAt))}</div>
+          </button>
+        `).join('');
+
+        list.querySelectorAll('.history-entry').forEach(el => {
+          el.addEventListener('click', () => loadPreview(el.dataset.id));
+        });
+
+        await loadPreview(entries[0].id);
+      }
+    } catch (err) {
+      list.innerHTML = `<div class="history-empty">${escapeHtml(err.message)}</div>`;
+    }
+
+    document.getElementById('historyRestoreBtn').addEventListener('click', async () => {
+      if (!selected) return;
+      const confirmed = await showConfirm(
+        'Restore snapshot',
+        `Restore ${target.filename} from ${formatTs(selected.createdAt)}? The current file will be snapshotted first.`
+      );
+      if (!confirmed) return;
+      cleanup({ action: 'restore', id: selected.id });
+    });
+
+    document.getElementById('historyCloseBtn').addEventListener('click', () => cleanup(null));
   });
 }
 
@@ -176,7 +262,6 @@ const PAGE_LABELS = {
   agents:   'Agents',
   config:   'ossec.conf',
   backup:   'Backup & Restore',
-  terminal:    'Terminal',
   conflicts:   'Rule Conflicts',
   lists:       'CDB Lists',
   containers:  'Containers',
@@ -188,7 +273,6 @@ const routes = {
   agents:   () => initAgentsPage(),
   config:   () => initConfigPage(),
   backup:   () => initBackupPage(),
-  terminal:   () => initTerminalPage(),
   conflicts:  () => initConflictsPage(),
   lists:      () => initListsPage(),
   containers: () => initContainersPage(),
@@ -204,9 +288,9 @@ function navigate(page) {
   if (page !== 'containers') destroyContainersPage();
 
   // rules and decoders share #page-rules
-  const pageId = page === 'decoders' ? 'rules' : page;
-  // terminal has its own page div but is inside #page-rules structure
-
+  const pageId = page === 'decoders'
+    ? 'rules'
+    : page;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById(`page-${pageId}`)?.classList.add('active');
 
@@ -273,3 +357,19 @@ window.__cmEditors = window.__cmEditors || [];
   setInterval(updateStatus, 30_000);
   onHashChange();
 })();
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function formatTs(value) {
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return value;
+  }
+}

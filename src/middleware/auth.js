@@ -12,7 +12,7 @@ function requireAuth(req, res, next) {
   if (req.path === '/api/health' || req.path === '/api/config/info') return next();
 
   // All other /api/* routes require a valid session
-  if (req.path.startsWith('/api/') && !req.session?.authenticated) {
+  if (req.path.startsWith('/api/') && (!req.session?.authenticated || !req.session?.wazuhToken)) {
     return res.status(401).json({ error: 'Not authenticated', redirect: '/login' });
   }
 

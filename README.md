@@ -5,6 +5,7 @@ A lightweight web GUI for managing a Wazuh instance running in Docker. Built wit
 ## Features
 
 - **Rules & Decoders** — browse, create, edit, and delete custom XML files with a syntax-highlighted CodeMirror editor. Inline log tester runs `wazuh-logtest` against any log line.
+- **History & rollback** — every save, delete, and restore snapshots the previous version so you can preview and roll back safely.
 - **Agents** — view all enrolled agents with status, OS, version, last seen. Enroll new agents with generated install commands for Linux, Windows, and macOS. Remove agents.
 - **ossec.conf** — read and write the main Wazuh configuration file directly from the container, with a full XML editor and manager status overview.
 - **Reload Manager** — trigger `wazuh-control restart` from any page via the sidebar button.
@@ -37,6 +38,10 @@ WAZUH_API_PASS=wazuh
 
 # Optional: specify container name if auto-discovery fails
 WAZUH_CONTAINER=
+
+SESSION_SECRET=change-me-to-a-random-string
+COOKIE_SECURE=false
+DATA_DIR=./data
 
 PORT=8080
 ```
@@ -104,10 +109,14 @@ wazuh-web-manager/
 | PUT | `/api/config/ossec` | Write ossec.conf |
 | GET | `/api/config/status` | Manager info + container status |
 | POST | `/api/config/reload` | Reload Wazuh manager |
+| GET | `/api/history` | List saved snapshots for a file |
+| GET | `/api/history/:id` | Read a saved snapshot |
+| POST | `/api/history/:id/restore` | Restore a saved snapshot |
 
 ## Notes
 
 - The Wazuh API uses a self-signed certificate in the default Docker setup. TLS verification is disabled for local use (`rejectUnauthorized: false`). For production deployments, configure a proper certificate and re-enable verification in `src/wazuh-api.js`.
+- When running in Docker, mount `/app/data` on a persistent volume so file history survives container restarts.
 - The `000` agent (the manager itself) cannot be removed and has no remove button in the UI.
 - Agent install commands reference Wazuh 4.7.3 — update the version strings in `src/wazuh-api.js` (`buildEnrollCommands`) to match your deployment.
 

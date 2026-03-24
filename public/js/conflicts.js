@@ -41,6 +41,21 @@ async function runScan() {
   try {
     const data = await apiFetch('/api/conflicts');
     renderReport(data);
+    const total = (data.conflicts?.length || 0) + (data.overrides?.length || 0);
+    const stamp = new Date().toLocaleTimeString();
+    if (summary) {
+      summary.insertAdjacentHTML(
+        'beforeend',
+        `<span class="conflicts-scanned">Last scan ${escHtml(stamp)}</span>`
+      );
+    }
+    toast(
+      total > 0
+        ? `Conflict scan complete: ${data.conflicts.length} conflicts, ${data.overrides.length} overrides`
+        : 'Conflict scan complete: no issues found',
+      total > 0 ? 'info' : 'success',
+      2500
+    );
   } catch (err) {
     results.innerHTML = `<div class="conflicts-error">Scan failed: ${escHtml(err.message)}</div>`;
     toast(`Scan failed: ${err.message}`, 'error');

@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>wazuh-web-manager</title>
+  <title>Wazuh | Docker Config Manager</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32 4L8 14v18c0 13.3 10.3 25.7 24 28 13.7-2.3 24-14.7 24-28V14L32 4z' fill='%2300a9e0'/%3E%3Cpath d='M32 4L8 14v18c0 13.3 10.3 25.7 24 28 13.7-2.3 24-14.7 24-28V14L32 4z' fill='url(%23g)'/%3E%3Cpath d='M20 32l7 8 17-16' stroke='%23fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cdefs%3E%3ClinearGradient id='g' x1='8' y1='4' x2='56' y2='60' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0%25' stop-color='%2300c8f0'/%3E%3Cstop offset='100%25' stop-color='%230070c0'/%3E%3C/linearGradient%3E%3C/defs%3E%3C/svg%3E" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.css" />
@@ -14,7 +15,7 @@
     [data-theme="dark"] {
       --bg: #13151c; --surface: #1a1d26; --surface2: #1f2232;
       --border: #272b3a; --border2: #2e3448;
-      --text: #c9d1e0; --dim: #5c6480; --muted: #3a3f55;
+      --text: #eef3fb; --dim: #a9b4cb; --muted: #6f7a95;
       --accent: #5b8dee; --green: #3fb950; --yellow: #d29922; --red: #f85149;
       --modal-bg: rgba(0,0,0,0.6); --warn-bg: #1e1a0a; --warn-border: #3d3010;
       --toast-s-bg: #0e1e10; --toast-s-bd: #1c3d20; --toast-s-tx: #3fb950;
@@ -312,11 +313,26 @@
     /* Modals */
     .modal-overlay { position: fixed; inset: 0; background: var(--modal-bg); display: flex; align-items: center; justify-content: center; z-index: 100; }
     .modal { background: var(--surface); border: 1px solid var(--border2); border-radius: 4px; padding: 22px; min-width: 320px; max-width: 460px; }
+    .modal.modal-lg { width: min(960px, calc(100vw - 40px)); max-width: none; }
     .modal h3 { font-size: 14px; font-weight: 500; margin-bottom: 14px; }
     .modal label { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: var(--muted); margin-bottom: 14px; }
     .modal label .input { width: 100%; margin-top: 2px; }
     .modal p { color: var(--dim); font-size: 12px; margin-bottom: 14px; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 6px; }
+    .history-layout { display: grid; grid-template-columns: 280px 1fr; gap: 14px; min-height: 380px; }
+    .history-list { border: 1px solid var(--border); border-radius: 4px; overflow: auto; background: var(--bg); }
+    .history-empty { padding: 14px; color: var(--muted); font-size: 12px; }
+    .history-entry { width: 100%; text-align: left; padding: 10px 12px; background: none; border: none; border-bottom: 1px solid var(--border); color: var(--dim); cursor: pointer; font-family: inherit; }
+    .history-entry:last-child { border-bottom: none; }
+    .history-entry:hover, .history-entry.active { background: var(--surface2); color: var(--text); }
+    .history-entry-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text); margin-bottom: 2px; }
+    .history-entry-meta { font-size: 11px; color: var(--muted); }
+    .history-preview { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+    .history-preview-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+    .history-preview-title { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--dim); }
+    .history-preview-actions { display: flex; gap: 6px; }
+    .history-preview-body { flex: 1; overflow: auto; background: var(--bg); padding: 12px; }
+    .history-preview-body pre { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
 
     /* Console link */
     .sb-console {
@@ -425,20 +441,6 @@
     .container-card-id { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); margin-bottom: 12px; }
     .container-card-actions { display: flex; gap: 6px; }
 
-    /* Terminal page */
-    .terminal-page { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #0d0d0d; }
-    .terminal-bar {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 0 14px; height: 38px; min-height: 38px;
-      background: var(--surface); border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-    .terminal-bar-left { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
-    .terminal-target { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--green); }
-    .terminal-wrap { flex: 1; padding: 8px; overflow: hidden; }
-    .terminal-wrap .xterm { height: 100%; }
-    .terminal-wrap .xterm-viewport { border-radius: 3px; }
-
     /* Topbar user/logout */
     .topbar-user { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--dim); padding: 2px 7px; background: var(--surface2); border: 1px solid var(--border2); border-radius: 3px; }
     .topbar-logout { padding: 4px 9px; font-size: 11px; font-family: inherit; background: none; border: 1px solid var(--border2); color: var(--dim); border-radius: 3px; cursor: pointer; transition: all 80ms; }
@@ -485,10 +487,6 @@
       <a href="#decoders" class="nav-item" data-page="decoders">
         <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><line x1="8" y1="5" x2="8" y2="8"/><line x1="8" y1="8" x2="11" y2="10"/></svg>Decoders
       </a>
-      <a href="#rulecheck" class="nav-item" data-page="rulecheck">
-        <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><line x1="8" y1="5" x2="8" y2="8"/><line x1="8" y1="10.5" x2="8" y2="11"/></svg>Rule Check
-        <span class="nav-badge" id="rulecheckNavBadge" style="display:none"></span>
-      </a>
       <div class="nav-section">Management</div>
       <a href="#agents" class="nav-item" data-page="agents">
         <svg viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>Agents
@@ -509,9 +507,6 @@
       </a>
       <a href="#backup" class="nav-item" data-page="backup">
         <svg viewBox="0 0 16 16"><path d="M13 10v3H3v-3"/><path d="M8 2v8"/><polyline points="5 7 8 10 11 7"/></svg>Backup
-      </a>
-      <a href="#terminal" class="nav-item" data-page="terminal">
-        <svg viewBox="0 0 16 16"><polyline points="2 5 7 8 2 11"/><line x1="8" y1="11" x2="14" y2="11"/></svg>Terminal
       </a>
     </nav>
     <div class="sb-console">
@@ -573,9 +568,10 @@
             <div class="editor-bar">
               <span class="editor-filename" id="editorFilename">select a file</span>
               <div class="editor-actions" id="editorActions" style="display:none">
+                <button class="btn btn-ghost btn-sm" id="fileHistoryBtn">History</button>
                 <button class="btn btn-ghost btn-sm" id="logtestToggleBtn">logtest</button>
                 <button class="btn btn-danger btn-sm" id="deleteFileBtn">Delete</button>
-                <button class="btn btn-primary btn-sm" id="saveFileBtn">Save</button>
+                <button class="btn btn-primary btn-sm" id="saveFileBtn">Validate &amp; Save</button>
               </div>
             </div>
             <div id="editorWrapper" class="editor-wrapper">
@@ -684,8 +680,9 @@
           <div class="page-header">
             <h2>ossec.conf</h2>
             <div class="header-actions">
+              <button class="btn btn-ghost btn-sm" id="configHistoryBtn">History</button>
               <button class="btn btn-ghost btn-sm" id="configReloadBtn">↺ Reload Manager</button>
-              <button class="btn btn-primary btn-sm" id="configSaveBtn">Save</button>
+              <button class="btn btn-primary btn-sm" id="configSaveBtn">Validate &amp; Save</button>
             </div>
           </div>
           <div class="warning-banner">⚠ Changes to ossec.conf require a manager reload to take effect.</div>
@@ -728,25 +725,6 @@
             <div class="restore-result" id="restoreResult" style="display:none">
               <pre id="restoreResultBody"></pre>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Rule Check ── -->
-      <div class="page" id="page-rulecheck">
-        <div class="rulecheck-page">
-          <div class="page-header">
-            <h2>Rule Conflict Check</h2>
-            <button class="btn btn-primary btn-sm" id="rulecheckRunBtn">↺ Re-scan</button>
-          </div>
-          <p style="font-size:12px;color:var(--dim);margin-bottom:14px;line-height:1.6">
-            Scans all custom and default rule files for duplicate rule IDs.
-            <strong style="color:var(--red)">Conflicts</strong> are duplicate IDs within your custom files.
-            <strong style="color:var(--yellow)">Overrides</strong> are custom rules that replace a default Wazuh rule.
-          </p>
-          <div class="rc-summary" id="rulecheckSummary"></div>
-          <div class="rc-results" id="rulecheckResults">
-            <div class="rc-scanning">Press Re-scan to check for conflicts.</div>
           </div>
         </div>
       </div>
@@ -813,21 +791,6 @@
         </div>
       </div>
 
-      <!-- ── Terminal ── -->
-      <div class="page" id="page-terminal">
-        <div class="terminal-page">
-          <div class="terminal-bar">
-            <div class="terminal-bar-left">
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="2 5 7 8 2 11"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-              Shell —
-              <span class="terminal-target" id="terminalTarget">single-node-wazuh.manager-1</span>
-            </div>
-            <button class="btn btn-ghost btn-sm" id="terminalReconnectBtn">↺ Reconnect</button>
-          </div>
-          <div class="terminal-wrap" id="terminalWrap"></div>
-        </div>
-      </div>
-
     </div>
   </div>
 
@@ -855,6 +818,30 @@
     </div>
   </div>
 
+  <!-- History modal -->
+  <div class="modal-overlay" id="historyModal" style="display:none">
+    <div class="modal modal-lg">
+      <h3 id="historyTitle">File History</h3>
+      <div class="history-layout">
+        <div class="history-list" id="historyList">
+          <div class="history-empty">No snapshots yet.</div>
+        </div>
+        <div class="history-preview">
+          <div class="history-preview-bar">
+            <span class="history-preview-title" id="historyPreviewTitle">Select a snapshot</span>
+            <div class="history-preview-actions">
+              <button class="btn btn-ghost" id="historyCloseBtn">Close</button>
+              <button class="btn btn-primary" id="historyRestoreBtn" disabled>Restore</button>
+            </div>
+          </div>
+          <div class="history-preview-body" id="historyPreviewBody">
+            <div class="history-empty">Select a snapshot to preview its contents.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
@@ -878,8 +865,6 @@
     setTheme(_saved || _sys);
   </script>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/addon-fit/xterm-addon-fit.min.js"></script>
   <script src="/js/app.js" type="module"></script>
 </body>
 </html>

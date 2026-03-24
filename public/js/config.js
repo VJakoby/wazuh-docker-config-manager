@@ -1,4 +1,4 @@
-import { apiFetch, toast } from './app.js';
+import { apiFetch, showHistoryModal, toast } from './app.js';
 
 let editor = null;
 
@@ -7,6 +7,7 @@ let editor = null;
 // ---------------------------------------------------------------------------
 
 export async function initConfigPage() {
+  replaceWithClone('configHistoryBtn').addEventListener('click', handleHistory);
   replaceWithClone('configSaveBtn').addEventListener('click', handleSave);
   replaceWithClone('configReloadBtn').addEventListener('click', handleReload);
 
@@ -112,16 +113,37 @@ async function handleSave() {
   btn.disabled = true;
   btn.textContent = 'Saving…';
   try {
-    await apiFetch('/api/config/ossec', {
+    const result = await apiFetch('/api/config/ossec', {
       method: 'PUT',
       body: { content: editor.getValue() },
     });
-    toast('ossec.conf saved — reload the manager to apply changes', 'success', 5000);
+    toast(
+      result.snapshotCreated
+        ? 'ossec.conf saved — snapshot created, reload the manager to apply changes'
+        : 'ossec.conf saved — reload the manager to apply changes',
+      'success',
+      5000
+    );
   } catch (err) {
     toast(`Save failed: ${err.message}`, 'error');
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Save';
+    btn.textContent = 'Validate & Save';
+  }
+}
+
+async function handleHistory() {
+  const result = await showHistoryModal({ scope: 'config', filename: 'ossec.conf' });
+  if (!result || result.action !== 'restore') return;
+
+  try {
+    await apiFetch(`/api/history/${encodeURIComponent(result.id)}/restore?scope=config`, {
+      method: 'POST',
+    });
+    toast('ossec.conf restored from snapshot', 'success');
+    await loadConfig();
+  } catch (err) {
+    toast(`Restore failed: ${err.message}`, 'error');
   }
 }
 

@@ -11,10 +11,10 @@ const api = require('../wazuh-api');
 
 router.get('/', async (req, res) => {
   try {
-    const agents = await api.listAgents();
+    const agents = await api.listAgents({}, api.fromSession(req.session));
     res.json({ agents });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleError(req, res, err);
   }
 });
 
@@ -25,11 +25,11 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const agent = await api.getAgent(req.params.id);
+    const agent = await api.getAgent(req.params.id, api.fromSession(req.session));
     if (!agent) return res.status(404).json({ error: 'Agent not found' });
     res.json({ agent });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleError(req, res, err);
   }
 });
 
@@ -43,10 +43,10 @@ router.post('/enroll', async (req, res) => {
     const { name, ip = 'any', group = 'default' } = req.body;
     if (!name) return res.status(400).json({ error: 'Agent name is required' });
 
-    const info = await api.getEnrollmentInfo(name, ip, group);
+    const info = await api.getEnrollmentInfo(name, ip, group, api.fromSession(req.session));
     res.json(info);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleError(req, res, err);
   }
 });
 
@@ -57,10 +57,10 @@ router.post('/enroll', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    await api.deleteAgents(req.params.id);
+    await api.deleteAgents(req.params.id, api.fromSession(req.session));
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleError(req, res, err);
   }
 });
 
@@ -71,10 +71,10 @@ router.delete('/:id', async (req, res) => {
 
 router.put('/:id/group/:group', async (req, res) => {
   try {
-    await api.assignAgentGroup(req.params.id, req.params.group);
+    await api.assignAgentGroup(req.params.id, req.params.group, api.fromSession(req.session));
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleError(req, res, err);
   }
 });
 
@@ -85,10 +85,10 @@ router.put('/:id/group/:group', async (req, res) => {
 
 router.delete('/:id/group/:group', async (req, res) => {
   try {
-    await api.removeAgentGroup(req.params.id, req.params.group);
+    await api.removeAgentGroup(req.params.id, req.params.group, api.fromSession(req.session));
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleError(req, res, err);
   }
 });
 
@@ -99,10 +99,10 @@ router.delete('/:id/group/:group', async (req, res) => {
 
 router.get('/groups/list', async (req, res) => {
   try {
-    const groups = await api.listGroups();
+    const groups = await api.listGroups(api.fromSession(req.session));
     res.json({ groups });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleError(req, res, err);
   }
 });
 
@@ -115,10 +115,10 @@ router.post('/groups', async (req, res) => {
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: 'Group name is required' });
-    await api.createGroup(name);
+    await api.createGroup(name, api.fromSession(req.session));
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleError(req, res, err);
   }
 });
 
@@ -129,10 +129,10 @@ router.post('/groups', async (req, res) => {
 
 router.delete('/groups/:name', async (req, res) => {
   try {
-    await api.deleteGroup(req.params.name);
+    await api.deleteGroup(req.params.name, api.fromSession(req.session));
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleError(req, res, err);
   }
 });
 
@@ -143,10 +143,10 @@ router.delete('/groups/:name', async (req, res) => {
 
 router.get('/groups/:name/config', async (req, res) => {
   try {
-    const content = await api.getGroupConfig(req.params.name);
+    const content = await api.getGroupConfig(req.params.name, api.fromSession(req.session));
     res.json({ content });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleError(req, res, err);
   }
 });
 
@@ -159,11 +159,19 @@ router.put('/groups/:name/config', async (req, res) => {
   try {
     const { content } = req.body;
     if (!content) return res.status(400).json({ error: 'content is required' });
-    await api.updateGroupConfig(req.params.name, content);
+    await api.updateGroupConfig(req.params.name, content, api.fromSession(req.session));
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    handleError(req, res, err);
   }
 });
+
+function handleError(req, res, err) {
+  if (err.code === 'SESSION_EXPIRED') {
+    req.session.destroy(() => res.status(401).json({ error: err.message, redirect: '/login' }));
+    return;
+  }
+  res.status(500).json({ error: err.message });
+}
 
 module.exports = router;
