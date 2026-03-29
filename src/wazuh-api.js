@@ -2,6 +2,7 @@
 
 const axios = require('axios');
 const https = require('https');
+const { getWazuhApiURL } = require('./wazuh-url');
 
 // Wazuh uses a self-signed cert by default in Docker
 const client = axios.create({
@@ -13,7 +14,7 @@ let _token = null;
 let _tokenExpiry = 0;
 
 function baseURL() {
-  return (process.env.WAZUH_API_URL || 'https://localhost:55000').replace(/\/$/, '');
+  return getWazuhApiURL();
 }
 
 function log(level, msg, extra = {}) {

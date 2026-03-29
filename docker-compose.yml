@@ -6,10 +6,8 @@ services:
     ports:
       - "${PORT:-8080}:8080"
     environment:
-      # IMPORTANT: WAZUH_API_URL must use the container name of the wazuh manager
-      # as it appears in `docker ps`. Default assumes single-node Wazuh Docker setup.
       - PORT=8080
-      - WAZUH_API_URL=${WAZUH_API_URL:-https://single-node-wazuh.manager-1:55000}
+      - WAZUH_API_URL=${WAZUH_API_URL:-https://host.docker.internal:55000}
       - WAZUH_API_USER=${WAZUH_API_USER:-wazuh-wui}
       - WAZUH_API_PASS=${WAZUH_API_PASS}
       - WAZUH_CONTAINER=${WAZUH_CONTAINER:-single-node-wazuh.manager-1}
@@ -18,23 +16,18 @@ services:
       - COOKIE_SECURE=${COOKIE_SECURE:-false}
       - DATA_DIR=${DATA_DIR:-/app/data}
       - NODE_ENV=production
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       # Mount the Docker socket so we can manage the Wazuh container
       - /var/run/docker.sock:/var/run/docker.sock
       - wazuh-web-manager-data:/app/data
     networks:
       - wazuh-web-manager-net
-      # Also attach to the Wazuh network so we can reach the API
-      - wazuh-net
 
 networks:
   wazuh-web-manager-net:
     driver: bridge
-  # Reference the existing Wazuh Docker network — adjust the name to match
-  # your Wazuh deployment (run `docker network ls` to find it)
-  wazuh-net:
-    external: true
-    name: ${WAZUH_NETWORK:-single-node_default}
 
 volumes:
   wazuh-web-manager-data:

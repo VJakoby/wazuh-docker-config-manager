@@ -112,8 +112,9 @@ By default the app listens on `http://localhost:8080`.
 The Compose setup expects:
 
 - `/var/run/docker.sock` mounted into the app container
-- access to the external Wazuh Docker network
+- the Wazuh API published on the Docker host, reachable as `https://host.docker.internal:55000`
 - `WAZUH_API_PASS` and `SESSION_SECRET` provided as environment variables
+- `WAZUH_CONTAINER` set to the real Wazuh manager container name for Docker file/container operations
 
 ### Running with Node.js
 
@@ -126,17 +127,24 @@ Create environment variables before starting the app:
 
 ```env
 PORT=8080
-WAZUH_API_URL=https://single-node-wazuh.manager-1:55000
+WAZUH_API_URL=https://host.docker.internal:55000
 WAZUH_API_USER=wazuh-wui
 WAZUH_API_PASS=change-me
 WAZUH_CONTAINER=single-node-wazuh.manager-1
 WAZUH_DASHBOARD_PORT=443
+WAZUH_PUBLIC_HOST=wazuh.example.internal
 SESSION_SECRET=change-me-to-a-random-string
 COOKIE_SECURE=false
 DATA_DIR=./data
 ```
 
 In production, `SESSION_SECRET` must be set to a non-default value or the server will refuse to start.
+
+For Docker deployments:
+
+- `WAZUH_API_URL` should point to the host-published Wazuh API, typically `https://host.docker.internal:55000`
+- `WAZUH_CONTAINER` should remain the actual Docker container name, such as `single-node-wazuh.manager-1`
+- `WAZUH_PUBLIC_HOST` is optional, but useful when users access this app from another machine and the generated "Open dashboard" link should point at a public hostname instead of the local host header
 
 ## Login Model
 
@@ -193,7 +201,7 @@ Public routes are intentionally limited to:
 
 - Default Wazuh Docker deployments often use self-signed certs, so TLS verification is disabled in the current API client
 - The Docker socket effectively grants privileged access to the Docker host; treat deployment accordingly
-- The external network name in `docker-compose.yml` must match your Wazuh deployment
+- `WAZUH_API_URL` and `WAZUH_CONTAINER` serve different purposes in Docker: API reachability vs container targeting
 - Persist `/app/data` if you want history and related state to survive container recreation
 
 ## AI Disclosure

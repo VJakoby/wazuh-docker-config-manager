@@ -4,6 +4,8 @@ const express = require('express');
 const router  = express.Router();
 const axios   = require('axios');
 const https   = require('https');
+const util    = require('util');
+const { getWazuhApiURL, resolveWazuhApiURL } = require('../wazuh-url');
 
 const client = axios.create({
   httpsAgent: new https.Agent({ rejectUnauthorized: false }),
@@ -11,7 +13,53 @@ const client = axios.create({
 });
 
 function baseURL() {
-  return (process.env.WAZUH_API_URL || 'https://localhost:55000').replace(/\/$/, '');
+  return getWazuhApiURL();
+}
+
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function formatAxiosError(err, url) {
+  const status = err.response?.status;
+  const data = err.response?.data;
+
+  const responseDetail = firstNonEmpty(
+    data?.detail,
+    data?.message,
+    data?.error,
+    typeof data === 'string' ? data : ''
+  );
+  if (responseDetail) return { status, detail: responseDetail };
+
+  const parts = [];
+  const code = firstNonEmpty(err?.code);
+  const errno = firstNonEmpty(String(err?.errno ?? ''));
+  const address = firstNonEmpty(err?.address);
+  const port = err?.port != null ? String(err.port) : '';
+  const message = firstNonEmpty(err?.message, err?.cause?.message);
+
+  if (code) parts.push(`code ${code}`);
+  if (errno) parts.push(`errno ${errno}`);
+  if (address) parts.push(`address ${address}`);
+  if (port) parts.push(`port ${port}`);
+  if (message) parts.push(message);
+
+  const axiosJson = typeof err?.toJSON === 'function' ? err.toJSON() : null;
+  const rawSummary = firstNonEmpty(
+    axiosJson ? util.inspect(axiosJson, { breakLength: Infinity, compact: true }) : '',
+    util.inspect(err, { breakLength: Infinity, compact: true })
+  );
+  if (rawSummary) parts.push(`raw ${rawSummary}`);
+
+  const detail = parts.length
+    ? parts.join(' | ')
+    : `No response from Wazuh API at ${url}`;
+
+  return { status, detail };
 }
 
 // ---------------------------------------------------------------------------
@@ -20,6 +68,7 @@ function baseURL() {
 
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
+  const url = `${baseURL()}/security/user/authenticate`;
 
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
@@ -28,7 +77,7 @@ router.post('/login', async (req, res) => {
   console.log(`[auth] Login attempt for user "${username}"`);
 
   try {
-    const response = await client.get(`${baseURL()}/security/user/authenticate`, {
+    const response = await client.get(url, {
       auth: { username, password },
     });
 
@@ -55,15 +104,20 @@ router.post('/login', async (req, res) => {
     });
 
   } catch (err) {
-    const status = err.response?.status;
-    const detail = err.response?.data?.detail || err.message;
+    const { status, detail } = formatAxiosError(err, url);
 
-    console.log(`[auth] Login failed for "${username}" — status ${status}: ${detail}`);
+    console.log(`[auth] Login failed for "${username}" — status ${status ?? 'no-response'}: ${detail}`);
 
     if (status === 401) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
-    return res.status(500).json({ error: `Wazuh API error: ${detail}` });
+
+    const resolution = resolveWazuhApiURL();
+    const hint = /localhost|127\.0\.0\.1/.test(resolution.raw)
+      ? ' If this app runs in Docker, do not use localhost for WAZUH_API_URL. Use the Wazuh container/service name on the shared Docker network instead.'
+      : '';
+
+    return res.status(500).json({ error: `Wazuh API error: ${detail}${hint}` });
   }
 });
 

@@ -6,6 +6,7 @@ const express     = require('express');
 const path        = require('path');
 const session     = require('express-session');
 const requireAuth = require('./src/middleware/auth');
+const { getConfiguredApiURL, resolveWazuhApiURL } = require('./src/wazuh-url');
 
 const rulesRouter  = require('./src/routes/rules');
 const agentsRouter = require('./src/routes/agents');
@@ -20,6 +21,26 @@ const conflictsRouter  = require('./src/routes/conflicts');
 const app  = express();
 const PORT = process.env.PORT || 8080;
 const sessionSecret = process.env.SESSION_SECRET;
+
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function getPreferredHost(req) {
+  const configured = firstNonEmpty(process.env.WAZUH_PUBLIC_HOST);
+  if (configured) return configured;
+
+  const forwardedHost = firstNonEmpty(req.get('x-forwarded-host'));
+  if (forwardedHost) return forwardedHost.split(',')[0].trim().replace(/:\d+$/, '');
+
+  const hostHeader = firstNonEmpty(req.get('host'));
+  if (hostHeader) return hostHeader.replace(/:\d+$/, '');
+
+  return 'localhost';
+}
 
 if (process.env.NODE_ENV === 'production' && (!sessionSecret || sessionSecret === 'change-me-to-a-random-string')) {
   throw new Error('SESSION_SECRET must be set to a non-default value in production');
@@ -88,8 +109,11 @@ app.use('/api/conflicts',  conflictsRouter);
 
 // Expose config info publicly so login page can show it
 app.get('/api/config/info', (req, res) => {
+  const resolved = resolveWazuhApiURL();
   res.json({
-    apiURL:    process.env.WAZUH_API_URL || 'https://localhost:55000',
+    apiURL:    resolved.url,
+    configuredApiURL: resolved.raw,
+    apiURLRewritten: resolved.rewritten,
     container: process.env.WAZUH_CONTAINER || '(auto-discover)',
   });
 });
@@ -108,20 +132,14 @@ app.get('/api/health', async (req, res) => {
 
 // Console link — public
 app.get('/api/health/console', (req, res) => {
-  const os   = require('os');
-  const nets = os.networkInterfaces();
-  let hostIP = 'localhost';
-  for (const ifaces of Object.values(nets)) {
-    for (const iface of ifaces) {
-      if (iface.family === 'IPv4' && !iface.internal) { hostIP = iface.address; break; }
-    }
-    if (hostIP !== 'localhost') break;
-  }
   const dashboardPort = process.env.WAZUH_DASHBOARD_PORT || '443';
+  const resolved = resolveWazuhApiURL();
+  const host = getPreferredHost(req);
   res.json({
-    hostIP,
-    dashboardURL: `https://${hostIP}:${dashboardPort}`,
-    apiURL: process.env.WAZUH_API_URL || 'https://localhost:55000',
+    host,
+    dashboardURL: `https://${host}:${dashboardPort}`,
+    apiURL: resolved.url,
+    configuredApiURL: resolved.raw,
   });
 });
 
@@ -141,8 +159,14 @@ app.use((err, req, res, _next) => {
 // ---------------------------------------------------------------------------
 
 app.listen(PORT, () => {
+  const resolved = resolveWazuhApiURL();
   console.log(`\nwazuh-web-manager running at http://localhost:${PORT}`);
   console.log(`  Container : ${process.env.WAZUH_CONTAINER || '(auto-discover)'}`);
-  console.log(`  API URL   : ${process.env.WAZUH_API_URL   || 'https://localhost:55000'}`);
+  console.log(`  API URL   : ${resolved.url}`);
+  if (resolved.rewritten) {
+    console.log(`  Note      : Rewrote configured WAZUH_API_URL ${JSON.stringify(getConfiguredApiURL())} to ${JSON.stringify(resolved.url)} for Docker networking`);
+  } else if (resolved.isDocker && /https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(resolved.raw)) {
+    console.log(`  Warning   : WAZUH_API_URL points at localhost inside Docker. Set it to the Wazuh container/service name on the shared network.`);
+  }
   console.log(`  Auth      : Wazuh API credentials\n`);
 });
