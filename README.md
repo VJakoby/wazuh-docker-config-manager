@@ -1,125 +1,201 @@
-# wazuh-web-manager
+# Wazuh Docker Config Manager
 
-A lightweight web GUI for managing a Wazuh instance running in Docker. Built with Node.js (Express) and vanilla JS — no frontend build step required.
+> A local web dashboard for managing Wazuh Docker configuration, agents, lists, backups, and container operations from one place.
+
+---
+
+## My Problem
+
+Running Wazuh in Docker is convenient, but operational changes still end up split across containers, API calls, XML files, CDB lists, ad hoc backups, and shell access. That slows down routine admin work and makes safe change management harder than it needs to be.
+
+## What it is NOT
+
+- **Not a SIEM replacement**: it does not replace the Wazuh dashboard or alerting workflow
+- **Not a hosted control plane**: this app is intended to run locally or inside your own Docker environment
+- **Not a full cluster orchestrator**: it helps operate a Wazuh Docker deployment, but it is not a generic container platform
+- **Not a scanner or security automation engine**: it manages Wazuh state and files, it does not perform offensive actions
+
+## What it IS
+
+- **A local web application**: the dashboard runs as a small Node.js app with a browser UI
+- **A Docker-aware Wazuh admin surface**: it reads and writes manager files through the Docker socket and uses the Wazuh REST API for agent operations
+- **A change-management tool**: history, restore points, conflict checks, and backup import/export are built around safer config editing
+- **A practical operator interface**: rules, decoders, `ossec.conf`, agent enrollment, CDB lists, and container controls are exposed in one workflow
+
+## Workspace Model
+
+The app works across three operational layers:
+
+- **Wazuh API session**: users sign in with Wazuh API credentials and receive a server-side session
+- **Manager files**: rules, decoders, lists, and `ossec.conf` are read from and written back into the Wazuh manager container
+- **Operational history**: edits and restore actions can be snapshotted so changes remain traceable and reversible
+
+This keeps authentication, file operations, and rollback concerns separated while still presenting them as one UI.
+
+## Tech Stack
+
+| Area | Technology | Notes |
+|---|---|---|
+| Runtime | Node.js | App server runtime |
+| Backend | Express | API routes, sessions, and static asset serving |
+| Frontend | Vanilla JavaScript | No frontend build step |
+| Auth | `express-session` | Session-backed login after Wazuh API authentication |
+| Wazuh API access | `axios` | REST calls to the manager API |
+| Container access | `dockerode` | File I/O and container lifecycle operations |
+| XML parsing | `fast-xml-parser` | Wazuh config and rule handling |
+| Backup format | `jszip` | Export and restore ZIP backups |
+| Upload handling | `multer` | Backup restore uploads |
+| Containerization | Docker / Docker Compose | Optional deployment mode |
 
 ## Features
 
-- **Rules & Decoders** — browse, create, edit, and delete custom XML files with a syntax-highlighted CodeMirror editor. Inline log tester runs `wazuh-logtest` against any log line.
-- **History & rollback** — every save, delete, and restore snapshots the previous version so you can preview and roll back safely.
-- **Agents** — view all enrolled agents with status, OS, version, last seen. Enroll new agents with generated install commands for Linux, Windows, and macOS. Remove agents.
-- **ossec.conf** — read and write the main Wazuh configuration file directly from the container, with a full XML editor and manager status overview.
-- **Reload Manager** — trigger `wazuh-control restart` from any page via the sidebar button.
-- **Dual connection** — Docker socket for file I/O (`CopyFromContainer` / `CopyToContainer`), Wazuh REST API for agent and group management.
-- **Auto-discovery** — finds the `wazuh-manager` container automatically, no manual config needed for standard Docker deployments.
+**Rules & Decoders**
+- Browse, create, edit, and delete custom XML files
+- Run inline rule-ID conflict checks before saving
+- Detect collisions between custom rules and overrides against the default Wazuh ruleset
+- Keep history snapshots for restore workflows
+
+**Configuration**
+- Read and update `ossec.conf`
+- View manager/container health details
+- Trigger manager reload/restart operations from the UI
+
+**Agents**
+- List enrolled agents with metadata and status
+- Enroll new agents using generated install commands
+- Remove agents and manage agent groups through the Wazuh API
+
+**CDB Lists**
+- Create, edit, and delete files under `/var/ossec/etc/lists`
+- Parse list content into structured key/value rows and write it back safely
+
+**Backups & Restore**
+- Export `ossec.conf`, custom rules, and custom decoders into a ZIP archive
+- Preview uploaded backup contents before restore
+- Restore from ZIP while snapshotting previous file state first when possible
+
+**Container Controls**
+- Discover Wazuh-related containers
+- Start, stop, and restart containers from the app
+
+## Security Model
+
+This project is designed around a trusted operator managing a trusted Wazuh environment.
+
+High-level security position:
+
+- users authenticate with real Wazuh API credentials
+- the app stores only the validated API token inside the session
+- most API routes require an authenticated session
+- Docker socket access is powerful by design and should be treated as privileged
+- default Wazuh Docker setups often use self-signed TLS, so API verification is currently disabled for local practicality
+
+This means the app is useful for local/admin environments, but it should be deployed deliberately and not exposed casually to untrusted networks.
 
 ## Requirements
 
 - Node.js 18+
-- Docker running locally (or accessible via `DOCKER_HOST`)
-- A running [Wazuh Docker](https://github.com/wazuh/wazuh-docker) deployment
+- Docker access to the Wazuh manager environment
+- A reachable Wazuh REST API endpoint
+- A running Wazuh Docker deployment
 
-## Setup
+## Quick Start
+
+### Docker Compose
 
 ```bash
-git clone https://github.com/yourusername/wazuh-web-manager
-cd wazuh-web-manager
-npm install
-
-cp .env.example .env
-# Edit .env with your Wazuh API credentials and container name
+docker compose up -d --build
 ```
 
-### `.env`
+By default the app listens on `http://localhost:8080`.
+
+The Compose setup expects:
+
+- `/var/run/docker.sock` mounted into the app container
+- access to the external Wazuh Docker network
+- `WAZUH_API_PASS` and `SESSION_SECRET` provided as environment variables
+
+### Running with Node.js
+
+```bash
+npm install
+npm start
+```
+
+Create environment variables before starting the app:
 
 ```env
-WAZUH_API_URL=https://localhost:55000
-WAZUH_API_USER=wazuh
-WAZUH_API_PASS=wazuh
-
-# Optional: specify container name if auto-discovery fails
-WAZUH_CONTAINER=
-
+PORT=8080
+WAZUH_API_URL=https://single-node-wazuh.manager-1:55000
+WAZUH_API_USER=wazuh-wui
+WAZUH_API_PASS=change-me
+WAZUH_CONTAINER=single-node-wazuh.manager-1
+WAZUH_DASHBOARD_PORT=443
 SESSION_SECRET=change-me-to-a-random-string
 COOKIE_SECURE=false
 DATA_DIR=./data
-
-PORT=8080
 ```
 
-## Running
+In production, `SESSION_SECRET` must be set to a non-default value or the server will refuse to start.
 
-```bash
-# Production
-npm start
+## Login Model
 
-# Development (auto-restart on file changes, Node 18+)
-npm run dev
-```
+Users sign in through the app with the same credentials used for the Wazuh REST API. After successful authentication, the server stores the validated token in the session and uses that session to gate the rest of the API.
 
-Open [http://localhost:8080](http://localhost:8080).
+Public routes are intentionally limited to:
 
-## Project Structure
+- `GET /api/health`
+- `GET /api/config/info`
+- `/api/auth/*`
 
-```
-wazuh-web-manager/
-├── server.js                  # Express app, route mounting
-├── .env.example
-├── package.json
-├── src/
-│   ├── docker.js              # Dockerode wrapper — file R/W, exec, auto-discovery
-│   ├── wazuh-api.js           # Wazuh REST API — auth, agents, groups
-│   └── routes/
-│       ├── rules.js           # /api/rules  and  /api/decoders
-│       ├── agents.js          # /api/agents
-│       └── config.js          # /api/config/ossec, /api/config/status, /api/config/reload
-└── public/
-    ├── index.html             # App shell, templates, CodeMirror CDN
-    ├── css/style.css          # Dark theme
-    └── js/
-        ├── app.js             # Router, toast, modals, shared utils
-        ├── rules.js           # Rules & decoders page
-        ├── agents.js          # Agents page
-        └── config.js          # ossec.conf page
-```
-
-## API Reference
+## API Surface
 
 | Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/health` | Container connection status |
-| GET | `/api/rules` | List rule files |
-| GET | `/api/rules/:filename` | Read rule file |
-| PUT | `/api/rules/:filename` | Create or update rule file |
-| DELETE | `/api/rules/:filename` | Delete rule file |
-| POST | `/api/rules/actions/reload` | Reload Wazuh manager |
-| POST | `/api/rules/actions/logtest` | Run wazuh-logtest |
-| GET | `/api/decoders` | List decoder files |
-| GET | `/api/decoders/:filename` | Read decoder file |
-| PUT | `/api/decoders/:filename` | Create or update decoder file |
-| DELETE | `/api/decoders/:filename` | Delete decoder file |
+|---|---|---|
+| GET | `/api/health` | Docker/container health status |
+| GET | `/api/config/info` | Public config hints for login |
+| POST | `/api/auth/login` | Authenticate with Wazuh API credentials |
+| POST | `/api/auth/logout` | End current app session |
+| GET | `/api/auth/me` | Return current session info |
+| GET | `/api/rules` | List custom rule files |
+| GET | `/api/rules/:filename` | Read a rule file |
+| PUT | `/api/rules/:filename` | Create or update a rule file |
+| DELETE | `/api/rules/:filename` | Delete a rule file |
+| GET | `/api/decoders` | List custom decoder files |
+| GET | `/api/decoders/:filename` | Read a decoder file |
+| PUT | `/api/decoders/:filename` | Create or update a decoder file |
+| DELETE | `/api/decoders/:filename` | Delete a decoder file |
 | GET | `/api/agents` | List agents |
-| GET | `/api/agents/:id` | Get single agent |
-| POST | `/api/agents/enroll` | Create agent + generate install commands |
-| DELETE | `/api/agents/:id` | Remove agent |
-| PUT | `/api/agents/:id/group/:group` | Assign agent to group |
-| GET | `/api/agents/groups/list` | List groups |
-| POST | `/api/agents/groups` | Create group |
-| DELETE | `/api/agents/groups/:name` | Delete group |
-| GET | `/api/config/ossec` | Read ossec.conf |
-| PUT | `/api/config/ossec` | Write ossec.conf |
-| GET | `/api/config/status` | Manager info + container status |
-| POST | `/api/config/reload` | Reload Wazuh manager |
-| GET | `/api/history` | List saved snapshots for a file |
-| GET | `/api/history/:id` | Read a saved snapshot |
-| POST | `/api/history/:id/restore` | Restore a saved snapshot |
+| POST | `/api/agents/enroll` | Enroll agent and generate install commands |
+| GET | `/api/config/status` | Manager and config status |
+| GET | `/api/config/ossec` | Read `ossec.conf` |
+| PUT | `/api/config/ossec` | Write `ossec.conf` |
+| POST | `/api/config/reload` | Reload or restart manager services |
+| GET | `/api/lists` | List CDB files |
+| GET | `/api/lists/:name` | Read and parse a CDB file |
+| PUT | `/api/lists/:name` | Save a CDB file |
+| POST | `/api/lists` | Create a new CDB file |
+| DELETE | `/api/lists/:name` | Delete a CDB file |
+| GET | `/api/conflicts` | Full custom/default rule conflict report |
+| POST | `/api/conflicts/check` | Check one file’s rule IDs before save |
+| GET | `/api/history` | List change snapshots |
+| GET | `/api/history/:id` | Read a snapshot |
+| POST | `/api/history/:id/restore` | Restore a snapshot |
+| GET | `/api/backup/download` | Download ZIP backup |
+| POST | `/api/backup/preview` | Preview uploaded backup contents |
+| POST | `/api/backup/restore` | Restore uploaded ZIP backup |
+| GET | `/api/containers` | List Wazuh containers |
+| POST | `/api/containers/:name/start` | Start container |
+| POST | `/api/containers/:name/stop` | Stop container |
+| POST | `/api/containers/:name/restart` | Restart container |
 
 ## Notes
 
-- The Wazuh API uses a self-signed certificate in the default Docker setup. TLS verification is disabled for local use (`rejectUnauthorized: false`). For production deployments, configure a proper certificate and re-enable verification in `src/wazuh-api.js`.
-- When running in Docker, mount `/app/data` on a persistent volume so file history survives container restarts.
-- The `000` agent (the manager itself) cannot be removed and has no remove button in the UI.
-- Agent install commands reference Wazuh 4.7.3 — update the version strings in `src/wazuh-api.js` (`buildEnrollCommands`) to match your deployment.
+- Default Wazuh Docker deployments often use self-signed certs, so TLS verification is disabled in the current API client
+- The Docker socket effectively grants privileged access to the Docker host; treat deployment accordingly
+- The external network name in `docker-compose.yml` must match your Wazuh deployment
+- Persist `/app/data` if you want history and related state to survive container recreation
 
-## License
+## AI Disclosure
 
-MIT
+See [AI-DISCLOSURE.md](./AI-DISCLOSURE.md).
